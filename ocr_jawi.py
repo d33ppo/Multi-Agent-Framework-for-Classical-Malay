@@ -139,8 +139,8 @@ def save_output(result: dict, output_path: str) -> None:
 
 
 def main():
-    image_path = sys.argv[1] if len(sys.argv) > 1 else "test-data/jawi-manuscript-2.gif"
-    output_path = sys.argv[2] if len(sys.argv) > 2 else "output/jawi_ocr_output-2.txt"
+    image_path = sys.argv[1] if len(sys.argv) > 1 else "test-data/jawi-manuscript-4.png"
+    output_path = sys.argv[2] if len(sys.argv) > 2 else "output/jawi_ocr_output-4.txt"
 
     print(f"Processing: {image_path}")
     print(f"Tessdata dir: {TESSDATA_DIR}")
