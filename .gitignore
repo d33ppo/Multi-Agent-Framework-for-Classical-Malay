@@ -4,3 +4,4 @@ __pycache__/
 tessdata/
 test-data/
 .env
+fixtures/
