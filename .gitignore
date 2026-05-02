@@ -1,7 +1,5 @@
-output/
+data/
 __pycache__/
 *.pyc
 tessdata/
-test-data/
 .env
-fixtures/
