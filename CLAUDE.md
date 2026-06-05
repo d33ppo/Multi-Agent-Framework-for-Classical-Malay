@@ -4,7 +4,7 @@
 
 **Project title:** Multi-Agent Framework for Classical Malay Understanding and Knowledge Extraction
 
-Final year project building a multi-agent pipeline to process Classical Malay documents from Majalah Qalam (1950–1969) written in Jawi script. Improves OCR through manually prepared ground-truth data and TrOCR fine-tuning, then passes extracted Jawi text through specialised LLM agents for OCR correction, romanisation, modern Malay translation, summarisation, and structured knowledge extraction.
+Final year project building a multi-agent pipeline to process Classical Malay documents from Majalah Qalam (1950–1969) written in Jawi script. Improves OCR through manually prepared ground-truth data and TrOCR fine-tuning, then passes extracted Jawi text through specialised LLM agents for romanisation, modern Malay translation, summarisation, and structured knowledge extraction.
 
 Keep this file consistent with `docs/AGENTS.md`.
 
@@ -18,7 +18,7 @@ Keep this file consistent with `docs/AGENTS.md`.
 - **Backend:** Python / FastAPI
 - **OCR Model:** TrOCR (fine-tuned on Jawi ground-truth data, PyTorch / Google Colab)
 - **Agent Framework:** LangChain
-- **LLM for agents:** Claude Sonnet 4.6 via OpenRouter
+- **LLM for agents:** OpenRouter (configurable model, default: Gemini 2.5 Flash)
 - **Storage:** Supabase
 - **Image processing:** OpenCV, PyMuPDF
 
@@ -27,13 +27,12 @@ Keep this file consistent with `docs/AGENTS.md`.
 1. Scanned Jawi PDF or image input
 2. Pre-processing — OpenCV, PyMuPDF
 3. Fine-tuned TrOCR — extracts Jawi Unicode text
-4. OCR correction agent — LangChain / LLM
-5. Romanisation agent — Jawi to Classical Malay Rumi
-6. Translation agent — Classical Malay to Modern Malay
-7. Summarisation agent
-8. Knowledge extraction agent
-9. Supabase storage
-10. React frontend display
+4. Romanisation agent — Jawi to Classical Malay Rumi
+5. Translation agent — Classical Malay to Modern Malay
+6. Summarisation agent
+7. Knowledge extraction agent
+8. Supabase storage
+9. React frontend display
 
 ### Dataset
 
@@ -58,7 +57,7 @@ Keep this file consistent with `docs/AGENTS.md`.
 - Classical Malay Jawi has unique glyphs absent from standard Arabic: ca ﭺ, ga ڬ, nga ڠ, pa ڤ, va ۏ, nya ڽ
 - Tesseract fails on these glyphs — hence the custom TrOCR fine-tuning approach
 - No separate romanisation model is to be built — romanisation agent uses LLM on Unicode text only, which is text-to-text, not vision
-- Never overwrite original OCR output — keep corrected text in a separate field
+- Never overwrite original OCR output
 
 ---
 
@@ -144,7 +143,6 @@ At the end of every change, provide a short summary listing:
 - Do not commit `.env` files or secret values
 - Do not upload manuscript data to external services unless explicitly configured
 - Preserve original OCR text and never overwrite it silently
-- Keep corrected OCR text separate from original OCR text in all storage
 - AI outputs must include confidence or uncertainty indicators where possible
 - Store agent run status and error messages in Supabase for every pipeline run
 - Add tests for OCR output, agent output, API endpoints, and failure cases
@@ -158,4 +156,3 @@ At the end of every change, provide a short summary listing:
 - Do not change the agent workflow without updating `docs/AGENTS.md` and `docs/SAD.md`
 - Do not remove human review from low-confidence or contradictory outputs
 - Do not fine-tune a separate romanisation model — romanisation is handled by the LLM agent only
-- Do not merge or overwrite the original Jawi OCR output with corrected output

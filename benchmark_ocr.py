@@ -1,7 +1,7 @@
 """
 Benchmarking framework for Jawi OCR methods.
 
-Compares Tesseract, Claude, and ILMU on test manuscript images.
+Compares Tesseract and OpenRouter vision models on test manuscript images.
 
 Metrics:
   - Processing time (wall-clock)
@@ -20,7 +20,7 @@ Usage:
     python benchmark_ocr.py                         # all images, all methods
     python benchmark_ocr.py --image <path>           # single image
     python benchmark_ocr.py --skip-missing           # skip providers w/o keys
-    python benchmark_ocr.py --providers tesseract claude
+    python benchmark_ocr.py --providers tesseract openrouter
 """
 
 import argparse
@@ -340,8 +340,8 @@ def main():
         help="Path to a single image to benchmark. Default: all test images."
     )
     parser.add_argument(
-        "--providers", nargs="+", default=["tesseract", "claude", "ilmu", "zai"],
-        help="OCR providers to include. Default: tesseract claude ilmu zai"
+        "--providers", nargs="+", default=["tesseract", "openrouter"],
+        help="OCR providers to include. Default: tesseract openrouter"
     )
     parser.add_argument(
         "--skip-missing", action="store_true",

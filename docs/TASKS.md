@@ -46,12 +46,11 @@ This task list breaks the FYP prototype into practical phases. The goal is a sim
 | Task ID | Task Description | Dependency | Expected Output | Completion Criteria | Related Document |
 | --- | --- | --- | --- | --- | --- |
 | T5.1 | Create LangChain orchestration skeleton. | T3.2 | Agent runner. | Agent steps can run in documented order. | SAD.md |
-| T5.2 | Implement OCR Correction Agent. | T5.1 | Corrected Jawi text and notes. | Original OCR remains preserved. | SAD.md |
-| T5.3 | Implement Romanisation Agent. | T5.2 | Romanised text. | Output stored in `romanisation_outputs`. | DATABASE_SCHEMA.md |
-| T5.4 | Implement Translation Agent. | T5.3 | Modern Malay translation. | Output stored in `translation_outputs`. | DATABASE_SCHEMA.md |
-| T5.5 | Implement Summarisation Agent. | T5.4 | Summary and key points. | Output stored in `summaries`. | DATABASE_SCHEMA.md |
-| T5.6 | Implement Knowledge Extraction Agent. | T5.4 | Structured JSON knowledge. | Valid JSON stored in `extracted_knowledge`. | API_SPEC.md |
-| T5.7 | Add retry, fallback, and invalid JSON handling. | T5.2-T5.6 | Robust agent execution. | Failure cases pass QA tests. | SAD.md, QATD.md |
+| T5.2 | Implement Romanisation Agent. | T5.1 | Romanised text. | Output stored in `romanisation_outputs`. | DATABASE_SCHEMA.md |
+| T5.3 | Implement Translation Agent. | T5.2 | Modern Malay translation. | Output stored in `translation_outputs`. | DATABASE_SCHEMA.md |
+| T5.4 | Implement Summarisation Agent. | T5.3 | Summary and key points. | Output stored in `summaries`. | DATABASE_SCHEMA.md |
+| T5.5 | Implement Knowledge Extraction Agent. | T5.3 | Structured JSON knowledge. | Valid JSON stored in `extracted_knowledge`. | API_SPEC.md |
+| T5.6 | Add retry, fallback, and invalid JSON handling. | T5.2-T5.5 | Robust agent execution. | Failure cases pass QA tests. | SAD.md, QATD.md |
 
 ## Phase 6: Frontend Screens
 
@@ -59,8 +58,8 @@ This task list breaks the FYP prototype into practical phases. The goal is a sim
 | --- | --- | --- | --- | --- | --- |
 | T6.1 | Build upload screen. | T2.1 | React upload UI. | User can upload sample. | README.md |
 | T6.2 | Build OCR result screen. | T3.2 | OCR display. | OCR text, confidence, accuracy, and CER visible. | PRD.md |
-| T6.3 | Build pipeline output screen. | T5.6 | Multi-output display. | OCR, corrected OCR, romanisation, translation, summary, and knowledge visible. | SAD.md |
-| T6.4 | Build validation review screen. | T6.3 | Review form. | Reviewer can submit correction/approval. | QATD.md |
+| T6.3 | Build pipeline output screen. | T5.5 | Multi-output display. | OCR, romanisation, translation, summary, and knowledge visible. | SAD.md |
+| T6.4 | Build validation review screen. | T6.3 | Review form. | Reviewer can submit approval or comments. | QATD.md |
 
 ## Phase 7: Supabase Integration
 

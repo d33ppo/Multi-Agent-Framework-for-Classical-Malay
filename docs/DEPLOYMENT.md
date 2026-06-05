@@ -151,7 +151,7 @@ Demo flow:
 2. Run OCR.
 3. Show OCR confidence, accuracy, and CER.
 4. Run full agent pipeline.
-5. Show corrected OCR, romanisation, translation, summary, and extracted knowledge.
+5. Show romanisation, translation, summary, and extracted knowledge.
 6. Submit validation review.
 7. Show stored result or status in Supabase-backed UI.
 

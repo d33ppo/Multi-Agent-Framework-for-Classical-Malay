@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Classical Malay Pipeline — Majalah Qalam</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+
+    .jawi {
+      font-family: 'Scheherazade New', 'Amiri', 'Arial Unicode MS', serif;
+      font-size: 1.35rem;
+      line-height: 2.4;
+      direction: rtl;
+      text-align: right;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.45s ease-out both;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .spin { animation: spin 0.9s linear infinite; }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
+    .stage-line {
+      width: 2px;
+      height: 28px;
+      background: linear-gradient(to bottom, #cbd5e1, #e2e8f0);
+      margin-left: 19px;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+
+  <!-- ── Header ────────────────────────────────────────────────── -->
+  <header class="text-white shadow-xl" style="background: linear-gradient(135deg,#0b2545 0%,#1a4a8a 60%,#2563eb 100%)">
+    <div class="max-w-4xl mx-auto px-6 py-8">
+      <div class="flex items-start gap-5">
+
+        <!-- icon -->
+        <div class="bg-white/20 rounded-xl p-3 flex-shrink-0 mt-0.5">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+        </div>
+
+        <div>
+          <p class="text-blue-300 text-xs font-semibold tracking-widest uppercase mb-1">
+            Final Year Project · NLP / AI
+          </p>
+          <h1 class="text-2xl font-bold leading-tight mb-2">
+            Multi-Agent Framework for Classical Malay
+          </h1>
+          <p class="text-blue-100 text-sm mb-4">
+            Majalah Qalam (1950–1969) · Jawi Script Understanding &amp; Knowledge Extraction
+          </p>
+          <!-- pipeline breadcrumb -->
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="bg-white/15 rounded-full px-3 py-1">OCR Jawi</span>
+            <span class="text-blue-300">→</span>
+            <span class="bg-white/15 rounded-full px-3 py-1">Romanisation</span>
+            <span class="text-blue-300">→</span>
+            <span class="bg-white/15 rounded-full px-3 py-1">Translation</span>
+            <span class="text-blue-300">→</span>
+            <span class="bg-white/15 rounded-full px-3 py-1">Summary</span>
+            <span class="text-blue-300">→</span>
+            <span class="bg-white/15 rounded-full px-3 py-1">Knowledge Extraction</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Main ──────────────────────────────────────────────────── -->
+  <main class="max-w-4xl mx-auto px-4 py-8">
+
+    <!-- ① Input card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-2">
+      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4 flex items-center gap-2">
+        <span class="w-6 h-6 rounded-full bg-slate-600 text-white flex items-center justify-center text-xs font-bold">1</span>
+        Input — OCR Jawi Text
+      </h2>
+
+      <textarea
+        id="jawiInput"
+        rows="7"
+        class="jawi w-full border border-slate-200 rounded-xl p-4 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+        placeholder="Tampalkan teks Jawi di sini…"
+      >حکايت ڤترڠ هاتي کارڠن اوليه
+الڠ أحمد بن بين محمد يونس
+جورو توليس ملايو ريسيدن
+ڤيراق دکارڠ حکايت اين
+دالم باندر تاءيڤيڠ ڤادا ١
+هاريبولن جولاي تاهون مسيحي
+١٨٩٦</textarea>
+
+      <div class="flex flex-wrap items-center gap-4 mt-5">
+        <div class="flex items-center gap-2 flex-wrap">
+          <label for="modelSelect" class="text-sm text-slate-600 font-medium">Model:</label>
+          <select
+            id="modelSelect"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <optgroup label="Google">
+              <option value="google/gemini-2.5-flash" selected>Gemini 2.5 Flash (Recommended)</option>
+              <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (faster)</option>
+              <option value="google/gemini-2.5-pro">Gemini 2.5 Pro (highest quality)</option>
+            </optgroup>
+            <optgroup label="Qwen">
+              <option value="qwen/qwen3-30b-a3b">Qwen3 30B</option>
+              <option value="qwen/qwen3-235b-a22b">Qwen3 235B</option>
+              <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
+            </optgroup>
+            <optgroup label="Anthropic (via OpenRouter)">
+              <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku</option>
+            </optgroup>
+            <optgroup label="OpenAI (via OpenRouter)">
+              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+            </optgroup>
+            <optgroup label="Meta (Free)">
+              <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (free)</option>
+            </optgroup>
+            <optgroup label="Dev">
+              <option value="mock">Mock (offline demo)</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <button
+          id="runBtn"
+          onclick="runPipeline()"
+          class="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <!-- play icon -->
+          <svg id="iconPlay" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+          </svg>
+          <!-- spinner icon -->
+          <svg id="iconSpin" class="w-4 h-4 spin hidden" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span id="btnLabel">Run Pipeline</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Error box -->
+    <div id="errorBox" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-3 text-sm mb-4">
+      <strong>Error:</strong> <span id="errorMsg"></span>
+    </div>
+
+    <!-- ── Pipeline results ────────────────────────────────────── -->
+    <div id="results" class="hidden">
+
+      <!-- connector -->
+      <div class="stage-line"></div>
+
+      <!-- ② Romanisation -->
+      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #3b82f6;">
+        <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
+          Romanisation
+          <span class="text-xs text-slate-400 font-normal normal-case ml-1">Jawi → Rumi (Classical Malay)</span>
+        </h3>
+        <pre id="romanizedText" class="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap bg-blue-50 rounded-xl p-4 font-sans"></pre>
+      </div>
+
+      <div class="stage-line"></div>
+
+      <!-- ③ Translation -->
+      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #10b981; animation-delay: 0.05s;">
+        <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
+          Modern Malay Translation
+          <span class="text-xs text-slate-400 font-normal normal-case ml-1">Classical → Modern Malay</span>
+        </h3>
+        <pre id="translationText" class="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap bg-emerald-50 rounded-xl p-4 font-sans"></pre>
+      </div>
+
+      <div class="stage-line"></div>
+
+      <!-- ④ Summary -->
+      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #8b5cf6; animation-delay: 0.10s;">
+        <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">4</span>
+          Summary
+          <span class="text-xs text-slate-400 font-normal normal-case ml-1">Automatic summarisation</span>
+        </h3>
+        <p id="summaryText" class="text-slate-700 text-sm leading-relaxed bg-violet-50 rounded-xl p-4"></p>
+      </div>
+
+      <div class="stage-line"></div>
+
+      <!-- ⑤ Knowledge Extraction -->
+      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6" style="border-left: 4px solid #f59e0b; animation-delay: 0.15s;">
+        <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4 flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">5</span>
+          Knowledge Extraction
+          <span class="text-xs text-slate-400 font-normal normal-case ml-1">Structured entities &amp; facts</span>
+        </h3>
+        <div id="knowledgeGrid" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+      </div>
+
+      <!-- Metadata bar -->
+      <div id="metaBar" class="bg-slate-100 border border-slate-200 rounded-xl px-5 py-3 text-xs text-slate-500 flex flex-wrap gap-x-6 gap-y-1 mb-10">
+        <span>Model: <strong id="metaModel" class="text-slate-700"></strong></span>
+        <span>Mode: <strong id="metaMode" class="text-slate-700"></strong></span>
+        <span>Processing time: <strong id="metaTime" class="text-slate-700"></strong></span>
+      </div>
+
+    </div><!-- /results -->
+
+  </main>
+
+  <footer class="text-center py-6 text-xs text-slate-400 border-t border-slate-200">
+    Multi-Agent Framework for Classical Malay · Final Year Project · Powered by OpenRouter
+  </footer>
+
+  <script>
+    // ── Knowledge card config ─────────────────────────────────────
+    const KW = {
+      people:        { label: 'People',        icon: '👤', bg: 'bg-blue-50',   badge: 'bg-blue-100 text-blue-800' },
+      places:        { label: 'Places',        icon: '📍', bg: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-800' },
+      dates:         { label: 'Dates',         icon: '📅', bg: 'bg-yellow-50', badge: 'bg-yellow-100 text-yellow-800' },
+      organizations: { label: 'Organizations', icon: '🏛️', bg: 'bg-purple-50',  badge: 'bg-purple-100 text-purple-800' },
+      themes:        { label: 'Themes',        icon: '🏷️', bg: 'bg-pink-50',   badge: 'bg-pink-100 text-pink-800' },
+      key_claims:    { label: 'Key Claims',    icon: '💡', bg: 'bg-orange-50', badge: 'bg-orange-100 text-orange-800' },
+    };
+
+    // ── Run pipeline ──────────────────────────────────────────────
+    async function runPipeline() {
+      const jawi     = document.getElementById('jawiInput').value.trim();
+      const model = document.getElementById('modelSelect').value;
+
+      if (!jawi) { showError('Please enter Jawi text first.'); return; }
+
+      setLoading(true);
+      hideError();
+      document.getElementById('results').classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/pipeline/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jawi_text: jawi, model }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        displayResults(data);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // ── Display results ───────────────────────────────────────────
+    function displayResults(data) {
+      const r = data.result;
+      const m = data.metadata;
+
+      document.getElementById('romanizedText').textContent  = r.romanized_text;
+      document.getElementById('translationText').textContent = r.modern_malay_translation;
+      document.getElementById('summaryText').textContent    = r.summary;
+
+      renderKnowledge(r.knowledge_extraction);
+
+      document.getElementById('metaModel').textContent = m.model;
+      document.getElementById('metaMode').textContent  = m.mode === 'live' ? '🟢 live' : '🟡 mock';
+      document.getElementById('metaTime').textContent  = m.processing_time_seconds + 's';
+
+      document.getElementById('results').classList.remove('hidden');
+      document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ── Knowledge extraction grid ─────────────────────────────────
+    function renderKnowledge(knowledge) {
+      const grid = document.getElementById('knowledgeGrid');
+      grid.innerHTML = '';
+
+      for (const [key, cfg] of Object.entries(KW)) {
+        const items = knowledge[key] || [];
+
+        const card = document.createElement('div');
+        card.className = `${cfg.bg} rounded-xl p-3`;
+
+        // header
+        const hdr = document.createElement('div');
+        hdr.className = 'flex items-center gap-1.5 mb-2';
+        hdr.innerHTML = `
+          <span class="text-sm">${cfg.icon}</span>
+          <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">${cfg.label}</span>
+          <span class="ml-auto text-xs text-slate-400 font-medium">${items.length}</span>
+        `;
+        card.appendChild(hdr);
+
+        if (items.length === 0) {
+          const empty = document.createElement('p');
+          empty.className = 'text-xs text-slate-400 italic';
+          empty.textContent = 'None found';
+          card.appendChild(empty);
+        } else {
+          const wrap = document.createElement('div');
+          wrap.className = 'flex flex-wrap gap-1';
+          items.forEach(item => {
+            const b = document.createElement('span');
+            b.className = `text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}`;
+            b.textContent = item;
+            wrap.appendChild(b);
+          });
+          card.appendChild(wrap);
+        }
+
+        grid.appendChild(card);
+      }
+    }
+
+    // ── UI helpers ────────────────────────────────────────────────
+    function setLoading(on) {
+      const btn  = document.getElementById('runBtn');
+      const play = document.getElementById('iconPlay');
+      const spin = document.getElementById('iconSpin');
+      const lbl  = document.getElementById('btnLabel');
+
+      btn.disabled = on;
+      play.classList.toggle('hidden', on);
+      spin.classList.toggle('hidden', !on);
+      lbl.textContent = on ? 'Processing…' : 'Run Pipeline';
+    }
+
+    function showError(msg) {
+      document.getElementById('errorMsg').textContent = msg;
+      document.getElementById('errorBox').classList.remove('hidden');
+    }
+
+    function hideError() {
+      document.getElementById('errorBox').classList.add('hidden');
+    }
+
+    // Allow Ctrl+Enter to submit
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runPipeline();
+    });
+  </script>
+</body>
+</html>

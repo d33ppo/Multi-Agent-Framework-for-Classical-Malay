@@ -4,7 +4,7 @@
 
 **Project title:** Multi-Agent Framework for Classical Malay Understanding and Knowledge Extraction
 
-This project builds a Final Year Project prototype for processing selected scanned Jawi documents from Majalah Qalam, especially scanned image/PDF samples from 1950-1969. The system improves Jawi OCR using manually prepared ground-truth data and fine-tuning, then sends the extracted Jawi text through a multi-agent pipeline for OCR correction, romanisation, modern Malay translation, summarisation, and structured knowledge extraction.
+This project builds a Final Year Project prototype for processing selected scanned Jawi documents from Majalah Qalam, especially scanned image/PDF samples from 1950-1969. The system improves Jawi OCR using manually prepared ground-truth data and fine-tuning, then sends the extracted Jawi text through a multi-agent pipeline for romanisation, modern Malay translation, summarisation, and structured knowledge extraction.
 
 ## Problem Statement
 
@@ -40,7 +40,7 @@ If OCR is inaccurate, downstream agents may romanise wrongly, translate incorrec
 - Selected scanned image/PDF documents of Majalah Qalam written in Classical Malay Jawi.
 - Custom OCR model using manually prepared Jawi ground-truth data.
 - OCR benchmarking against existing systems.
-- Multi-agent pipeline for OCR correction, romanisation, translation, summarisation, and knowledge extraction.
+- Multi-agent pipeline for romanisation, translation, summarisation, and knowledge extraction.
 - FYP prototype with frontend, backend, agent pipeline, and storage.
 
 ### Out of Scope
@@ -58,8 +58,7 @@ If OCR is inaccurate, downstream agents may romanise wrongly, translate incorrec
 | Document preprocessing | Validate file type, extract pages, and prepare images for OCR. |
 | Fine-tuned OCR | Extract Jawi text using a custom trained OCR model. |
 | OCR benchmarking | Compare custom OCR with Tesseract and VLM-based OCR. |
-| OCR Correction Agent | Correct likely OCR errors while preserving the original OCR text. |
-| Romanisation Agent | Convert corrected Jawi text into romanised Malay. |
+| Romanisation Agent | Convert OCR Jawi text into romanised Classical Malay. |
 | Translation Agent | Translate romanised/Classical Malay text into modern Malay. |
 | Summarisation Agent | Produce concise summary of the document excerpt. |
 | Knowledge Extraction Agent | Extract entities, dates, topics, places, and relationships. |
@@ -76,7 +75,7 @@ If OCR is inaccurate, downstream agents may romanise wrongly, translate incorrec
 | FR4 | The system shall run the fine-tuned OCR model and store the original OCR text. |
 | FR5 | The system shall benchmark OCR output against gold-standard references using accuracy and CER. |
 | FR6 | The system shall compare fine-tuned OCR with Tesseract and VLM-based OCR where samples are available. |
-| FR7 | The system shall run OCR correction, romanisation, translation, summarisation, and knowledge extraction agents. |
+| FR7 | The system shall run romanisation, translation, summarisation, and knowledge extraction agents. |
 | FR8 | The system shall store each agent input, output, status, confidence/uncertainty, and error message if any. |
 | FR9 | The system shall allow a reviewer to submit validation comments and corrected outputs. |
 | FR10 | The system shall display pipeline status and final structured output. |

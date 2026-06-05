@@ -157,7 +157,7 @@ year=1955
 | --- | --- |
 | Method | `POST` |
 | Route | `/ocr-results/{ocr_result_id}/pipeline` |
-| Purpose | Run OCR correction, romanisation, translation, summarisation, and knowledge extraction. |
+| Purpose | Run romanisation, translation, summarisation, and knowledge extraction. |
 | Success status | `202 ACCEPTED` |
 
 **Request example**
@@ -177,7 +177,6 @@ year=1955
   "ocr_result_id": "33333333-3333-3333-3333-333333333333",
   "status": "running",
   "agent_order": [
-    "OCR Correction Agent",
     "Romanisation Agent",
     "Translation Agent",
     "Summarisation Agent",
@@ -203,7 +202,7 @@ year=1955
 
 ```json
 {
-  "input_text": "Corrected or source text...",
+  "input_text": "Source OCR Jawi text...",
   "llm_provider": "openrouter"
 }
 ```
@@ -219,7 +218,7 @@ year=1955
 }
 ```
 
-**Validation rules:** Agent name must be one of `ocr-correction`, `romanisation`, `translation`, `summarisation`, `knowledge-extraction`.
+**Validation rules:** Agent name must be one of `romanisation`, `translation`, `summarisation`, `knowledge-extraction`.
 
 **Errors:** `400`, `404`, `422`, `503`.
 
@@ -394,7 +393,6 @@ year=1955
   "pipeline_id": "pipe-001",
   "status": "needs_review",
   "steps": [
-    {"agent_name": "OCR Correction Agent", "status": "completed"},
     {"agent_name": "Romanisation Agent", "status": "completed"},
     {"agent_name": "Translation Agent", "status": "needs_review"},
     {"agent_name": "Summarisation Agent", "status": "pending"},

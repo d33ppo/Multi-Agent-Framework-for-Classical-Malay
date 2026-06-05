@@ -13,7 +13,7 @@ This pipeline starts from OCR text and runs four subagents:
 3. `Summarisation`
 4. `Knowledge extraction`
 
-There is intentionally no OCR correction agent in this phase.
+The pipeline runs directly from OCR text without a correction step.
 
 ## Modules
 

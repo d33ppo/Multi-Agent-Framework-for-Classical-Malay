@@ -151,7 +151,7 @@ erDiagram
   "id": "44444444-4444-4444-4444-444444444444",
   "ocr_result_id": "33333333-3333-3333-3333-333333333333",
   "agent_name": "Romanisation Agent",
-  "input_text": "Corrected Jawi text...",
+  "input_text": "Original OCR Jawi text...",
   "output_text": "Romanised text...",
   "status": "completed",
   "confidence_score": 0.7,

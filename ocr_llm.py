@@ -1,18 +1,19 @@
 """
 LLM Vision-based OCR for extracting Jawi text from Classical Malay manuscripts.
 
-Provides two vision-LLM providers as alternatives to Tesseract:
-  - Claude (Anthropic) — uses the anthropic Python SDK with vision capabilities
-  - ILMU (YTL AI Labs) — uses an OpenAI-compatible REST endpoint
+Uses OpenRouter (https://openrouter.ai) with any vision-capable model as an
+alternative to Tesseract, encoding the manuscript image as base64 and prompting
+the model to extract Arabic-script (Jawi) text.
 
-Both providers encode the manuscript image as base64 and prompt the model
-to extract Arabic-script (Jawi) text, returning results in the same dict
-format as ocr_jawi.extract_jawi_text() for easy comparison.
+Results are returned in the same dict format as ocr_jawi.extract_jawi_text()
+for easy comparison.
 
 Usage:
-    python ocr_llm.py <image_path> [provider] [output_path]
+    python ocr_llm.py <image_path> [output_path]
 
-Providers: claude, ilmu, zai  (default: claude)
+Configure via .env:
+    OPENROUTER_API_KEY      — required
+    OPENROUTER_VISION_MODEL — model ID (default: google/gemini-2.5-flash-preview)
 """
 
 import os
@@ -26,11 +27,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from project root
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # ---------------------------------------------------------------------------
-# Jawi-specific prompt shared by both providers
+# Jawi-specific prompt
 # ---------------------------------------------------------------------------
 
 JAWI_EXTRACTION_PROMPT = """\
@@ -48,6 +48,9 @@ Examine the attached manuscript image carefully and extract **all visible Jawi t
 Begin transcription:
 """
 
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_VISION_MODEL = "google/gemini-2.5-flash"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -60,12 +63,13 @@ def _encode_image(image_path: str) -> tuple[str, str]:
         raise FileNotFoundError(f"Image not found: {image_path}")
 
     mime_type, _ = mimetypes.guess_type(str(path))
-    # Fallback mapping for common manuscript formats
     if mime_type is None:
-        ext_map = {".gif": "image/gif", ".png": "image/png",
-                    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                    ".tif": "image/tiff", ".tiff": "image/tiff",
-                    ".bmp": "image/bmp", ".webp": "image/webp"}
+        ext_map = {
+            ".gif": "image/gif", ".png": "image/png",
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".tif": "image/tiff", ".tiff": "image/tiff",
+            ".bmp": "image/bmp", ".webp": "image/webp",
+        }
         mime_type = ext_map.get(path.suffix.lower(), "image/png")
 
     with open(path, "rb") as f:
@@ -74,131 +78,41 @@ def _encode_image(image_path: str) -> tuple[str, str]:
     return b64, mime_type
 
 
-def _estimate_cost(provider: str, b64_data: str, output_text: str) -> float | None:
-    """
-    Rough cost estimate in USD.
-
-    Claude pricing (claude-sonnet-4-20250514, as of 2025-Q2):
-        Input : $3.00 / 1M tokens   (images ≈ 1 token per 750 bytes of base64)
-        Output: $15.00 / 1M tokens
-
-    ILMU pricing is not publicly documented — return None.
-    """
-    if provider == "claude":
-        # Approximate token counts
+def _estimate_cost(model: str, b64_data: str, output_text: str) -> float | None:
+    """Rough cost estimate in USD for Gemini 2.5 Flash pricing."""
+    if "gemini-2.5-flash" in model:
         image_tokens = len(b64_data) / 750
-        prompt_tokens = len(JAWI_EXTRACTION_PROMPT) / 4  # ~4 chars/token
+        prompt_tokens = len(JAWI_EXTRACTION_PROMPT) / 4
         input_tokens = image_tokens + prompt_tokens
         output_tokens = len(output_text) / 4
-        cost = (input_tokens / 1_000_000) * 3.00 + (output_tokens / 1_000_000) * 15.00
+        cost = (input_tokens / 1_000_000) * 0.15 + (output_tokens / 1_000_000) * 0.60
         return round(cost, 6)
     return None
 
 
 # ---------------------------------------------------------------------------
-# Claude provider
+# OpenRouter provider
 # ---------------------------------------------------------------------------
 
 
-def _extract_claude(image_path: str) -> dict:
-    """Extract Jawi text using Anthropic Claude's vision API."""
-    try:
-        import anthropic
-    except ImportError:
-        raise ImportError(
-            "The 'anthropic' package is required for the Claude provider.\n"
-            "Install it with: pip install anthropic>=0.40.0"
-        )
+def _extract_openrouter(image_path: str) -> dict:
+    """Extract Jawi text using a vision-capable model via OpenRouter."""
+    import requests
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise EnvironmentError(
-            "ANTHROPIC_API_KEY not set. Add it to your .env file or environment."
+            "OPENROUTER_API_KEY not set. Add it to your .env file."
         )
 
-    b64_data, media_type = _encode_image(image_path)
-
-    client = anthropic.Anthropic(api_key=api_key)
-
-    start = time.time()
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4096,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": b64_data,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": JAWI_EXTRACTION_PROMPT,
-                    },
-                ],
-            }
-        ],
-    )
-    elapsed = time.time() - start
-
-    raw_text = message.content[0].text.strip()
-
-    return {
-        "raw_text": raw_text,
-        "confidence": "N/A (LLM)",
-        "processing_time": round(elapsed, 3),
-        "language": "Jawi (via Claude)",
-        "provider": "claude",
-        "model": message.model,
-        "cost_estimate_usd": _estimate_cost("claude", b64_data, raw_text),
-        "usage": {
-            "input_tokens": message.usage.input_tokens,
-            "output_tokens": message.usage.output_tokens,
-        },
-    }
-
-
-# ---------------------------------------------------------------------------
-# ILMU provider
-# ---------------------------------------------------------------------------
-
-
-def _extract_ilmu(image_path: str) -> dict:
-    """
-    Extract Jawi text using ILMU (YTL AI Labs) vision API.
-
-    Assumes an OpenAI-compatible /v1/chat/completions endpoint.
-    Configure the endpoint URL via ILMU_API_URL env var.
-    """
-    try:
-        import requests
-    except ImportError:
-        raise ImportError(
-            "The 'requests' package is required for the ILMU provider.\n"
-            "Install it with: pip install requests>=2.31.0"
-        )
-
-    api_key = os.environ.get("ILMU_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "ILMU_API_KEY not set. Add it to your .env file or environment."
-        )
-
-    api_url = os.environ.get(
-        "ILMU_API_URL", "https://api.ilmu.ai/v1/chat/completions"
-    )
-    model_name = os.environ.get("ILMU_MODEL", "ilmu-vision")
-
+    model_name = os.environ.get("OPENROUTER_VISION_MODEL", DEFAULT_VISION_MODEL)
     b64_data, media_type = _encode_image(image_path)
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/malay-fyp/classical-malay-pipeline",
+        "X-Title": "Classical Malay Multi-Agent Pipeline",
     }
 
     payload = {
@@ -224,113 +138,26 @@ def _extract_ilmu(image_path: str) -> dict:
     }
 
     start = time.time()
-    response = requests.post(api_url, headers=headers, json=payload, timeout=120)
+    response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=120)
     elapsed = time.time() - start
 
     if response.status_code != 200:
         raise RuntimeError(
-            f"ILMU API error {response.status_code}: {response.text}"
+            f"OpenRouter API error {response.status_code}: {response.text}"
         )
 
     data = response.json()
     raw_text = data["choices"][0]["message"]["content"].strip()
-
     usage = data.get("usage", {})
 
     return {
         "raw_text": raw_text,
         "confidence": "N/A (LLM)",
         "processing_time": round(elapsed, 3),
-        "language": "Jawi (via ILMU)",
-        "provider": "ilmu",
+        "language": "Jawi (via OpenRouter)",
+        "provider": "openrouter",
         "model": data.get("model", model_name),
-        "cost_estimate_usd": _estimate_cost("ilmu", b64_data, raw_text),
-        "usage": {
-            "input_tokens": usage.get("prompt_tokens", "N/A"),
-            "output_tokens": usage.get("completion_tokens", "N/A"),
-        },
-    }
-
-
-# ---------------------------------------------------------------------------
-# z.AI provider
-# ---------------------------------------------------------------------------
-
-
-def _extract_zai(image_path: str) -> dict:
-    """
-    Extract Jawi text using z.AI vision API.
-    """
-    try:
-        import requests
-    except ImportError:
-        raise ImportError(
-            "The 'requests' package is required for the z.AI provider.\n"
-            "Install it with: pip install requests>=2.31.0"
-        )
-
-    api_key = os.environ.get("ZAI_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "ZAI_API_KEY not set. Add it to your .env file or environment."
-        )
-
-    api_url = os.environ.get(
-        "ZAI_API_URL", "https://api.z.ai/api/paas/v4/chat/completions"
-    )
-    model_name = os.environ.get("ZAI_MODEL", "glm-4.5")
-
-    b64_data, media_type = _encode_image(image_path)
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": model_name,
-        "max_tokens": 4096,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{media_type};base64,{b64_data}",
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": JAWI_EXTRACTION_PROMPT,
-                    },
-                ],
-            }
-        ],
-    }
-
-    start = time.time()
-    response = requests.post(api_url, headers=headers, json=payload, timeout=120)
-    elapsed = time.time() - start
-
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"z.AI API error {response.status_code}: {response.text}"
-        )
-
-    data = response.json()
-    raw_text = data["choices"][0]["message"]["content"].strip()
-
-    usage = data.get("usage", {})
-
-    return {
-        "raw_text": raw_text,
-        "confidence": "N/A (LLM)",
-        "processing_time": round(elapsed, 3),
-        "language": "Jawi (via z.AI)",
-        "provider": "zai",
-        "model": data.get("model", model_name),
-        "cost_estimate_usd": None,
+        "cost_estimate_usd": _estimate_cost(model_name, b64_data, raw_text),
         "usage": {
             "input_tokens": usage.get("prompt_tokens", "N/A"),
             "output_tokens": usage.get("completion_tokens", "N/A"),
@@ -343,19 +170,17 @@ def _extract_zai(image_path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 PROVIDERS = {
-    "claude": _extract_claude,
-    "ilmu": _extract_ilmu,
-    "zai": _extract_zai,
+    "openrouter": _extract_openrouter,
 }
 
 
-def extract_jawi_text_llm(image_path: str, provider: str = "claude") -> dict:
+def extract_jawi_text_llm(image_path: str, provider: str = "openrouter") -> dict:
     """
-    Extract Jawi text from a manuscript image using an LLM vision model.
+    Extract Jawi text from a manuscript image using a vision LLM via OpenRouter.
 
     Args:
         image_path: Path to the manuscript image.
-        provider:   "claude", "ilmu", or "zai".
+        provider:   "openrouter" (only supported provider).
 
     Returns:
         dict with keys: raw_text, confidence, processing_time,
@@ -373,7 +198,7 @@ def save_output(result: dict, output_path: str) -> None:
     """Save LLM OCR result to a text file."""
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write(f"=== Jawi LLM-OCR Result ({result['provider'].upper()}) ===\n\n")
+        f.write(f"=== Jawi LLM-OCR Result (OpenRouter / {result['model']}) ===\n\n")
         f.write(result["raw_text"])
         f.write("\n\n=== Metadata ===\n")
         f.write(f"Provider     : {result['provider']}\n")
@@ -396,24 +221,22 @@ def save_output(result: dict, output_path: str) -> None:
 
 def main():
     image_path = sys.argv[1] if len(sys.argv) > 1 else "test-data/jawi-manuscript-4.png"
-    provider = sys.argv[2] if len(sys.argv) > 2 else "claude"
 
-    if len(sys.argv) > 3:
-        output_path = sys.argv[3]
+    if len(sys.argv) > 2:
+        output_path = sys.argv[2]
     else:
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         base_name = os.path.splitext(os.path.basename(image_path))[0]
-        output_path = f"output/jawi_llm_{provider}_{base_name}_{timestamp}_output.txt"
+        output_path = f"output/jawi_llm_openrouter_{base_name}_{timestamp}_output.txt"
 
-    # Ensure UTF-8 output on Windows
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
     print(f"Processing : {image_path}")
-    print(f"Provider   : {provider}")
+    print(f"Model      : {os.environ.get('OPENROUTER_VISION_MODEL', DEFAULT_VISION_MODEL)}")
 
-    result = extract_jawi_text_llm(image_path, provider)
+    result = extract_jawi_text_llm(image_path)
 
-    print(f"\n=== Extracted Jawi Text ({provider.upper()}) ===")
+    print(f"\n=== Extracted Jawi Text ===")
     print(result["raw_text"])
     print(f"\n=== Metadata ===")
     print(f"Provider     : {result['provider']}")

@@ -81,7 +81,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 
 | ID | Test Case | Steps | Expected Result | Pass/Fail |
 | --- | --- | --- | --- | --- |
-| ROM-01 | Romanise valid corrected Jawi | Run Romanisation Agent. | Romanised text is produced and stored in `romanisation_outputs`. |  |
+| ROM-01 | Romanise valid OCR Jawi | Run Romanisation Agent. | Romanised text is produced and stored in `romanisation_outputs`. |  |
 | ROM-02 | Uncertain Jawi token | Include ambiguous OCR token. | Output includes uncertain token or note. |  |
 | ROM-03 | Compare to gold standard | Compare romanisation with reference. | BLEU or human review result is recorded. |  |
 
@@ -127,7 +127,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | --- | --- | --- | --- |
 | UX-01 | Upload document from frontend | User can upload without technical steps. |  |
 | UX-02 | View pipeline status | User can see pending/running/completed/needs_review states. |  |
-| UX-03 | Compare original and processed text | User can view OCR, corrected OCR, romanisation, translation, summary, and knowledge output. |  |
+| UX-03 | Compare original and processed text | User can view OCR, romanisation, translation, summary, and knowledge output. |  |
 | UX-04 | Submit review | User can approve or correct output. |  |
 | UX-05 | Demo flow | Supervisor/evaluator can follow the system from upload to final output. |  |
 
@@ -140,7 +140,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | Agents | All agent stages produce stored outputs with status and confidence/uncertainty where possible. |
 | Gold standard | Manual references are used for OCR and agent evaluation. |
 | Failure handling | Low confidence, invalid JSON, failed API calls, and unreadable scans are handled without silent data loss. |
-| Review | Human corrections are stored separately from original output. |
+| Review | Human review comments are stored in `validation_reviews` separately from agent output. |
 | Demo | Full local prototype demo can be completed on selected samples. |
 
 ## Pass/Fail Table

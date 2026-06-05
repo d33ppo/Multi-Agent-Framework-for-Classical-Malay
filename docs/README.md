@@ -16,7 +16,7 @@ Generic OCR tools perform poorly on Classical Malay Jawi documents because of sc
 | Preprocessing | Validates file type and prepares image/PDF pages for OCR. |
 | Fine-tuned OCR | Extracts Jawi text using a custom OCR model trained with manual ground truth. |
 | OCR benchmarking | Compares fine-tuned OCR against Tesseract and VLM-based OCR using accuracy and CER. |
-| Multi-agent processing | Runs OCR correction, romanisation, translation, summarisation, and knowledge extraction. |
+| Multi-agent processing | Runs romanisation, translation, summarisation, and knowledge extraction. |
 | Structured output | Displays and stores OCR text, romanised text, modern Malay translation, summary, entities, topics, and notes. |
 | Human validation | Allows reviewer corrections against gold-standard references. |
 
@@ -26,8 +26,7 @@ Generic OCR tools perform poorly on Classical Malay Jawi documents because of sc
 flowchart LR
     A[Upload Jawi PDF/Image] --> B[Preprocessing]
     B --> C[Fine-tuned OCR]
-    C --> D[OCR Correction Agent]
-    D --> E[Romanisation Agent]
+    C --> E[Romanisation Agent]
     E --> F[Translation Agent]
     F --> G[Summarisation Agent]
     G --> H[Knowledge Extraction Agent]
@@ -119,7 +118,7 @@ For the FYP demo:
 2. Show preprocessing and OCR output.
 3. Show OCR benchmark result and CER.
 4. Run the full agent pipeline.
-5. Display original OCR text, corrected OCR text, romanisation, translation, summary, and extracted knowledge.
+5. Display original OCR text, romanisation, translation, summary, and extracted knowledge.
 6. Submit a human validation review.
 7. Show stored records in Supabase.
 

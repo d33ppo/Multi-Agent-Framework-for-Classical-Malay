@@ -1,10 +1,8 @@
 """
-Reusable text-generation runtime for post-OCR agents.
+Text-generation runtime for post-OCR agents.
 
 Supports:
-  - Claude via Anthropic SDK
-  - ILMU via OpenAI-compatible REST API
-  - z.AI via OpenAI-compatible REST API
+  - OpenRouter (https://openrouter.ai) — access to hundreds of models
   - mock mode for offline/local verification
 """
 
@@ -17,13 +15,16 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
-except ImportError:  # pragma: no cover - optional in minimal environments
+except ImportError:  # pragma: no cover
 
     def load_dotenv(*_args, **_kwargs):
         return False
 
 
 ENV_FILE = Path(__file__).resolve().parent / ".env"
+
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_MODEL = "google/gemini-2.5-flash"
 
 
 def _load_env_file(env_file: Path = ENV_FILE) -> None:
@@ -49,25 +50,6 @@ def _load_env_file(env_file: Path = ENV_FILE) -> None:
 _load_env_file()
 
 
-AUTO_PROVIDER_ORDER = ("claude", "ilmu", "zai")
-
-
-@dataclass
-class RuntimeSelection:
-    provider: str
-    mode: str
-
-
-def _has_key(provider: str) -> bool:
-    env_map = {
-        "claude": "ANTHROPIC_API_KEY",
-        "ilmu": "ILMU_API_KEY",
-        "zai": "ZAI_API_KEY",
-    }
-    env_name = env_map.get(provider)
-    return bool(env_name and os.environ.get(env_name))
-
-
 def _get_int_env(*names: str) -> int | None:
     """Return the first valid positive integer found in the given env vars."""
     for name in names:
@@ -83,44 +65,48 @@ def _get_int_env(*names: str) -> int | None:
     return None
 
 
-def resolve_runtime(
-    provider: str = "auto", allow_mock_fallback: bool = True
-) -> RuntimeSelection:
-    provider = provider.lower().strip()
+@dataclass
+class RuntimeSelection:
+    provider: str
+    mode: str
 
-    if provider == "mock":
-        return RuntimeSelection(provider="mock", mode="mock")
 
-    if provider != "auto":
-        if _has_key(provider):
-            return RuntimeSelection(provider=provider, mode="live")
-        if allow_mock_fallback:
-            return RuntimeSelection(provider="mock", mode="mock")
-        raise EnvironmentError(
-            f"Provider '{provider}' is not configured in environment."
-        )
-
-    for candidate in AUTO_PROVIDER_ORDER:
-        if _has_key(candidate):
-            return RuntimeSelection(provider=candidate, mode="live")
+def resolve_runtime(allow_mock_fallback: bool = True) -> RuntimeSelection:
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return RuntimeSelection(provider="openrouter", mode="live")
 
     if allow_mock_fallback:
         return RuntimeSelection(provider="mock", mode="mock")
 
     raise EnvironmentError(
-        "No text-generation provider configured and mock fallback disabled."
+        "OPENROUTER_API_KEY is not set. "
+        "Add it to your .env file: OPENROUTER_API_KEY=sk-or-..."
     )
 
 
 class LLMTextRuntime:
-    """Small wrapper around text-only providers used by the pipeline agents."""
+    """Thin wrapper around OpenRouter used by the pipeline agents."""
 
-    def __init__(self, provider: str = "auto", allow_mock_fallback: bool = True):
-        selection = resolve_runtime(
-            provider=provider, allow_mock_fallback=allow_mock_fallback
+    def __init__(
+        self,
+        model: str | None = None,
+        allow_mock_fallback: bool = True,
+        # kept for backward-compat with pipeline_runner.py CLI
+        provider: str = "auto",
+    ):
+        if provider == "mock":
+            self.provider = "mock"
+            self.mode = "mock"
+        else:
+            selection = resolve_runtime(allow_mock_fallback=allow_mock_fallback)
+            self.provider = selection.provider
+            self.mode = selection.mode
+
+        self.model = (
+            "mock"
+            if self.mode == "mock"
+            else (model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL))
         )
-        self.provider = selection.provider
-        self.mode = selection.mode
 
     @property
     def is_mock(self) -> bool:
@@ -134,93 +120,25 @@ class LLMTextRuntime:
         max_tokens: int = 10000,
         temperature: float = 0.2,
     ) -> str:
-        """Generate plain-text output using the selected provider."""
+        """Generate plain-text output via OpenRouter."""
         if self.is_mock:
             raise RuntimeError("Mock runtime does not support free-form generation.")
 
-        if self.provider == "claude":
-            return self._generate_claude(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
-        if self.provider == "ilmu":
-            ilmu_model = os.environ.get(
-                "PIPELINE_ILMU_MODEL", os.environ.get("ILMU_MODEL", "ilmu-vision")
-            )
-            ilmu_max_tokens = (
-                _get_int_env("PIPELINE_ILMU_MAX_TOKENS", "ILMU_MAX_TOKENS")
-                or max_tokens
-            )
-            return self._generate_openai_compatible(
-                api_key=os.environ["ILMU_API_KEY"],
-                api_url=os.environ.get(
-                    "ILMU_API_URL", "https://api.ilmu.ai/v1/chat/completions"
-                ),
-                model_name=ilmu_model,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=ilmu_max_tokens,
-                temperature=temperature,
-            )
-        if self.provider == "zai":
-            return self._generate_openai_compatible(
-                api_key=os.environ["ZAI_API_KEY"],
-                api_url=os.environ.get(
-                    "ZAI_API_URL", "https://api.z.ai/api/paas/v4/chat/completions"
-                ),
-                model_name=os.environ.get(
-                    "PIPELINE_ZAI_MODEL", os.environ.get("ZAI_MODEL", "glm-4.5")
-                ),
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
-
-        raise ValueError(f"Unsupported provider: {self.provider}")
-
-    def _generate_claude(
-        self,
-        *,
-        system_prompt: str,
-        user_prompt: str,
-        max_tokens: int,
-        temperature: float,
-    ) -> str:
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-        message = client.messages.create(
-            model=os.environ.get("PIPELINE_CLAUDE_MODEL", "claude-sonnet-4-6"),
-            system=system_prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        return message.content[0].text.strip()
-
-    def _generate_openai_compatible(
-        self,
-        *,
-        api_key: str,
-        api_url: str,
-        model_name: str,
-        system_prompt: str,
-        user_prompt: str,
-        max_tokens: int,
-        temperature: float,
-    ) -> str:
         import requests
 
+        effective_max_tokens = (
+            _get_int_env("OPENROUTER_MAX_TOKENS") or max_tokens
+        )
+
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
             "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/malay-fyp/classical-malay-pipeline",
+            "X-Title": "Classical Malay Multi-Agent Pipeline",
         }
         payload = {
-            "model": model_name,
-            "max_tokens": max_tokens,
+            "model": self.model,
+            "max_tokens": effective_max_tokens,
             "temperature": temperature,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -228,22 +146,23 @@ class LLMTextRuntime:
             ],
         }
 
-        response = requests.post(api_url, headers=headers, json=payload, timeout=120)
+        response = requests.post(
+            OPENROUTER_API_URL, headers=headers, json=payload, timeout=120
+        )
         if response.status_code != 200:
             raise RuntimeError(
-                f"Provider API error {response.status_code}: {response.text}"
+                f"OpenRouter API error {response.status_code}: {response.text}"
             )
 
-        data = response.json()
-        return _extract_openai_compatible_text(data)
+        return _extract_text(response.json())
 
 
-def _extract_openai_compatible_text(data: dict) -> str:
-    """Extract assistant text from OpenAI-compatible responses."""
+def _extract_text(data: dict) -> str:
+    """Extract assistant text from an OpenAI-compatible response."""
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(
-            f"Provider response missing choices: {json.dumps(data)[:500]}"
+            f"OpenRouter response missing choices: {json.dumps(data)[:500]}"
         )
 
     choice = choices[0]
@@ -275,14 +194,17 @@ def _extract_openai_compatible_text(data: dict) -> str:
     if finish_reason == "length":
         raise RuntimeError(
             f"Model '{model_name}' hit the output token limit before returning usable text. "
-            f"Try increasing max_tokens, setting PIPELINE_ILMU_MAX_TOKENS/ILMU_MAX_TOKENS, "
-            f"shortening the prompt, or switching models. Raw response: {json.dumps(data)[:300]}"
+            f"Try increasing max_tokens or set OPENROUTER_MAX_TOKENS in your .env."
         )
 
     raise RuntimeError(
-        f"Provider returned empty assistant content for model '{model_name}' "
+        f"OpenRouter returned empty content for model '{model_name}' "
         f"(finish_reason={finish_reason})."
     )
+
+
+# Backward-compat alias used in tests
+_extract_openai_compatible_text = _extract_text
 
 
 def extract_json_object(text: str) -> dict:

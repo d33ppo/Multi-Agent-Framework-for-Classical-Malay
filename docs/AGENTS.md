@@ -4,7 +4,7 @@
 
 **Project title:** Multi-Agent Framework for Classical Malay Understanding and Knowledge Extraction
 
-This project is a Final Year Project prototype for selected Majalah Qalam Classical Malay Jawi documents. The system improves OCR using manually prepared ground-truth data, benchmarks OCR quality, and runs a multi-agent pipeline for OCR correction, romanisation, modern Malay translation, summarisation, and structured knowledge extraction.
+This project is a Final Year Project prototype for selected Majalah Qalam Classical Malay Jawi documents. The system improves OCR using manually prepared ground-truth data, benchmarks OCR quality, and runs a multi-agent pipeline for romanisation, modern Malay translation, summarisation, and structured knowledge extraction.
 
 ## Required Reading Order Before Coding
 
@@ -60,9 +60,8 @@ docs/          # Documentation
 ## Testing Rules
 
 - Add tests for OCR output, agent output, API endpoints, and failure cases.
-- Test invalid file upload, unreadable image, low OCR confidence, failed OCR extraction, invalid JSON, failed LLM/API call, and human reviewer correction.
+- Test invalid file upload, unreadable image, low OCR confidence, failed OCR extraction, invalid JSON, and failed LLM/API call.
 - Mock external LLM/API calls in automated tests unless live testing is explicitly required.
-- Check that original OCR text is preserved separately from corrected OCR text.
 - Run relevant tests before finishing a change.
 
 ## Security Rules
@@ -86,5 +85,4 @@ docs/          # Documentation
 - Preserve original OCR text and never overwrite it silently.
 - AI outputs must include confidence/uncertainty when possible.
 - Store agent run status and error messages.
-- Keep OCR correction separate from original OCR output.
 - Keep the project aligned with selected Majalah Qalam samples and FYP prototype scope.

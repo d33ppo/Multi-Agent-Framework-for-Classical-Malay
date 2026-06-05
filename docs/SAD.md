@@ -4,7 +4,7 @@
 
 **Project title:** Multi-Agent Framework for Classical Malay Understanding and Knowledge Extraction
 
-The system is a local FYP prototype that accepts selected scanned Majalah Qalam Jawi image/PDF documents, preprocesses them, runs fine-tuned OCR, evaluates OCR quality, and then coordinates specialised agents for OCR correction, romanisation, modern Malay translation, summarisation, and structured knowledge extraction. Outputs and review records are stored in Supabase.
+The system is a local FYP prototype that accepts selected scanned Majalah Qalam Jawi image/PDF documents, preprocesses them, runs fine-tuned OCR, evaluates OCR quality, and then coordinates specialised agents for romanisation, modern Malay translation, summarisation, and structured knowledge extraction. Outputs and review records are stored in Supabase.
 
 ## System Architecture
 
@@ -16,11 +16,10 @@ flowchart TB
     API --> OCR[Fine-tuned OCR Service]
     API --> BENCH[OCR Benchmark Service]
     API --> ORCH[LangChain Agent Orchestrator]
-    ORCH --> A1[OCR Correction Agent]
-    ORCH --> A2[Romanisation Agent]
-    ORCH --> A3[Translation Agent]
-    ORCH --> A4[Summarisation Agent]
-    ORCH --> A5[Knowledge Extraction Agent]
+    ORCH --> A1[Romanisation Agent]
+    ORCH --> A2[Translation Agent]
+    ORCH --> A3[Summarisation Agent]
+    ORCH --> A4[Knowledge Extraction Agent]
     ORCH --> LLM[OpenRouter / Configured LLM APIs]
     API --> DB[(Supabase Database)]
     API --> ST[(Supabase Storage)]
@@ -36,7 +35,7 @@ flowchart TB
 | Preprocessing Module | Convert PDF pages to images, clean image where appropriate, detect unreadable input. |
 | OCR Module | Run fine-tuned Jawi OCR and store original OCR text, confidence, accuracy, and CER. |
 | OCR Benchmarking Module | Compare fine-tuned OCR with Tesseract and VLM-based OCR on gold-standard samples. |
-| Multi-Agent Processing Module | Coordinate OCR correction, romanisation, translation, summarisation, and extraction. |
+| Multi-Agent Processing Module | Coordinate romanisation, translation, summarisation, and extraction. |
 | Output Module | Display structured output and preserve every stage result. |
 | Review Module | Store human validation, corrections, and review status. |
 | Storage Module | Store uploaded documents, outputs, references, reviews, and logs in Supabase. |
@@ -47,9 +46,8 @@ flowchart TB
 flowchart LR
     A[OCR Text + Metadata] --> B{OCR Confidence OK?}
     B -- No --> C[Flag for Human Review]
-    B -- Yes --> D[OCR Correction Agent]
-    C --> D
-    D --> E[Romanisation Agent]
+    B -- Yes --> E[Romanisation Agent]
+    C --> E
     E --> F[Translation Agent]
     F --> G[Summarisation Agent]
     F --> H[Knowledge Extraction Agent]
@@ -62,8 +60,7 @@ flowchart LR
 
 | Agent | Role |
 | --- | --- |
-| OCR Correction Agent | Correct obvious OCR errors while preserving original OCR text and uncertainty. |
-| Romanisation Agent | Convert corrected Jawi text into romanised Malay. |
+| Romanisation Agent | Convert OCR Jawi text into romanised Classical Malay (Rumi). |
 | Translation Agent | Translate Classical Malay/romanised text into modern Malay. |
 | Summarisation Agent | Summarise the modern Malay translation. |
 | Knowledge Extraction Agent | Extract structured entities, dates, places, topics, and relationships. |
@@ -72,9 +69,8 @@ flowchart LR
 
 | Agent | Input | Output | Stored In |
 | --- | --- | --- | --- |
-| OCR Correction Agent | Original OCR Jawi text, OCR confidence, OCR metadata | Corrected Jawi text, correction notes, confidence/uncertainty | `agent_runs` |
-| Romanisation Agent | Corrected Jawi text | Romanised text, uncertain tokens | `romanisation_outputs` |
-| Translation Agent | Romanised text and corrected Jawi text | Modern Malay translation, notes, confidence/uncertainty | `translation_outputs` |
+| Romanisation Agent | Original OCR Jawi text | Romanised text, uncertain tokens | `romanisation_outputs` |
+| Translation Agent | Romanised text | Modern Malay translation, notes, confidence/uncertainty | `translation_outputs` |
 | Summarisation Agent | Modern Malay translation | Summary, key points, confidence/uncertainty | `summaries` |
 | Knowledge Extraction Agent | Translation, summary, optional source text | JSON with entities, dates, places, topics, relationships, confidence | `extracted_knowledge` |
 
@@ -92,7 +88,6 @@ flowchart LR
 
 | Agent | Model/Tool | Output Control |
 | --- | --- | --- |
-| OCR Correction Agent | LangChain prompt chain using configured LLM provider | Must preserve original OCR text separately and mark uncertain corrections. |
 | Romanisation Agent | LangChain prompt chain using configured LLM provider and Jawi romanisation instructions | Must return romanised text and uncertain tokens where possible. |
 | Translation Agent | LangChain prompt chain using configured LLM provider | Must translate into modern Malay and avoid unsupported additions. |
 | Summarisation Agent | LangChain prompt chain using configured LLM provider | Must summarise from the translation, not invent new facts. |
@@ -106,7 +101,6 @@ flowchart LR
 4. If a gold-standard reference exists, benchmark metrics are calculated.
 5. Agent orchestrator creates one `agent_runs` record per agent stage.
 6. Agents run in this order:
-   - OCR Correction Agent.
    - Romanisation Agent.
    - Translation Agent.
    - Summarisation Agent.
@@ -122,7 +116,6 @@ OCR errors are the main upstream risk. A wrong Jawi character can change the rom
 For this reason, the system:
 
 - Stores original OCR text separately.
-- Stores corrected OCR text separately.
 - Tracks confidence and CER.
 - Marks low-confidence output for review.
 - Allows human validation before using results as final evidence.
@@ -163,7 +156,7 @@ Retries must be logged in `system_logs` and linked to `agent_runs` where relevan
 ## Human Review Workflow
 
 1. Reviewer opens a processed document.
-2. Reviewer compares original scan, OCR text, corrected OCR text, romanisation, translation, summary, and extracted knowledge.
+2. Reviewer compares original scan, OCR text, romanisation, translation, summary, and extracted knowledge.
 3. Reviewer submits corrections or approval.
 4. Review is stored in `validation_reviews`.
 5. If approved, output can be used for final prototype evaluation.

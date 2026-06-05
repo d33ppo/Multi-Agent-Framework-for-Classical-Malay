@@ -71,7 +71,7 @@ class PipelineTests(unittest.TestCase):
         }
         with self.assertRaises(RuntimeError) as ctx:
             _extract_openai_compatible_text(data)
-        self.assertIn("PIPELINE_ILMU_MAX_TOKENS", str(ctx.exception))
+        self.assertIn("max_tokens", str(ctx.exception))
 
     def test_load_env_file_fallback(self):
         env_name = "PIPELINE_TEST_ENV_FALLBACK"
@@ -93,7 +93,7 @@ class PipelineTests(unittest.TestCase):
         os.environ.pop(env_name, None)
 
     def test_load_plain_text_fixture(self):
-        record = load_ocr_input(str(ROOT / "fixtures" / "pipeline_inputs" / "good_qwen_sample.txt"))
+        record = load_ocr_input(str(ROOT / "data" / "input" / "pipeline_inputs" / "good_qwen_sample.txt"))
         self.assertEqual(record.ocr_provider, "qwen-fixture")
         self.assertIn("حکايت", record.ocr_jawi_text)
 
@@ -113,7 +113,7 @@ class PipelineTests(unittest.TestCase):
             shutil.rmtree(tmpdir)
         try:
             artifacts = run_pipeline(
-                str(ROOT / "fixtures" / "pipeline_inputs" / "good_qwen_sample.txt"),
+                str(ROOT / "data" / "input" / "pipeline_inputs" / "good_qwen_sample.txt"),
                 provider="mock",
                 output_dir=str(tmpdir),
             )

@@ -32,11 +32,12 @@ def run_pipeline(
     input_path: str,
     *,
     provider: str = "auto",
+    model: str | None = None,
     ocr_provider: str = "auto",
     output_dir: str | Path = OUTPUT_DIR,
 ) -> dict[str, str]:
     ocr_input = load_ocr_input(input_path, ocr_provider=ocr_provider)
-    runtime = LLMTextRuntime(provider=provider, allow_mock_fallback=True)
+    runtime = LLMTextRuntime(provider=provider, model=model, allow_mock_fallback=True)
 
     started = time.time()
     romanized_text = run_romanisation_agent(ocr_input.ocr_jawi_text, runtime)
@@ -70,9 +71,14 @@ def main() -> None:
     )
     parser.add_argument("input_path", help="Path to a text fixture, OCR result file, JSON record, or image file.")
     parser.add_argument(
+        "--model",
+        default=None,
+        help="OpenRouter model ID, e.g. google/gemini-2.5-flash-preview. Overrides OPENROUTER_MODEL env var.",
+    )
+    parser.add_argument(
         "--provider",
         default="auto",
-        help="Text-generation provider: auto, claude, ilmu, zai, or mock. Default: auto",
+        help="Use 'mock' for offline testing, 'auto' (default) for OpenRouter.",
     )
     parser.add_argument(
         "--ocr-provider",
@@ -93,6 +99,7 @@ def main() -> None:
     artifacts = run_pipeline(
         args.input_path,
         provider=args.provider,
+        model=args.model,
         ocr_provider=args.ocr_provider,
         output_dir=args.output_dir,
     )
