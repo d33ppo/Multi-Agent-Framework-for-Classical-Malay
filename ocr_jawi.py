@@ -126,7 +126,39 @@ def extract_jawi_text(image_path: str) -> dict:
     }
 
 
-def save_output(result: dict, output_path: str) -> None:
+def _levenshtein(s1: str, s2: str) -> int:
+    """Compute Levenshtein edit distance between two strings."""
+    if len(s1) < len(s2):
+        return _levenshtein(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    prev_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        curr_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            curr_row.append(min(
+                prev_row[j + 1] + 1,   # deletion
+                curr_row[j] + 1,        # insertion
+                prev_row[j] + (c1 != c2),  # substitution
+            ))
+        prev_row = curr_row
+    return prev_row[-1]
+
+
+def compute_cer(reference: str, hypothesis: str) -> float:
+    """
+    Compute Character Error Rate (CER).
+    CER = edit_distance(reference, hypothesis) / len(reference)
+    Returns a value in [0, inf); 0.0 means perfect match.
+    """
+    ref = " ".join(reference.split())
+    hyp = " ".join(hypothesis.split())
+    if len(ref) == 0:
+        return 0.0 if len(hyp) == 0 else 1.0
+    return round(_levenshtein(ref, hyp) / len(ref), 4)
+
+
+def save_output(result: dict, output_path: str, cer_results: dict | None = None) -> None:
     """Save OCR result to a text file."""
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("=== Jawi OCR Result ===\n\n")
@@ -135,12 +167,22 @@ def save_output(result: dict, output_path: str) -> None:
         f.write(f"Language     : {result['language']}\n")
         f.write(f"Confidence   : {result['confidence']}%\n")
         f.write(f"Process Time : {result['processing_time']}s\n")
+        if cer_results:
+            f.write("\n=== CER Evaluation ===\n")
+            for gt_path, cer in cer_results.items():
+                f.write(f"Ground Truth : {gt_path}\n")
+                f.write(f"CER          : {cer:.4f} ({cer * 100:.2f}%)\n\n")
     print(f"Output saved to: {output_path}")
 
 
 def main():
-    image_path = sys.argv[1] if len(sys.argv) > 1 else "test-data/jawi-manuscript-4.png"
-    output_path = sys.argv[2] if len(sys.argv) > 2 else "output/jawi_ocr_output-4.txt"
+    image_path = sys.argv[1] if len(sys.argv) > 1 else "data/input/jawi_image_data/1950_07_002_4.png"
+    output_path = sys.argv[2] if len(sys.argv) > 2 else "data/output/jawi_text_llm_&_tesseract/tesseract_1950_07_002_4.txt"
+
+    # Derive ground truth path from input filename, e.g. 1950_07_002_3.png -> 1950_07_002_3.txt
+    input_base = os.path.splitext(os.path.basename(image_path))[0]
+    gt_dir = "data/ground_truth"
+    gt_paths = [os.path.join(gt_dir, f"{input_base}.txt")]
 
     print(f"Processing: {image_path}")
     print(f"Tessdata dir: {TESSDATA_DIR}")
@@ -149,7 +191,6 @@ def main():
 
     # Set stdout to UTF-8 for Windows consoles that default to cp1252
     import io
-
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
     print("\n=== Extracted Jawi Text ===")
@@ -159,8 +200,22 @@ def main():
     print(f"Confidence   : {result['confidence']}%")
     print(f"Process Time : {result['processing_time']}s")
 
+    # Compute CER against each ground truth file
+    cer_results = {}
+    print("\n=== CER Evaluation ===")
+    for gt_path in gt_paths:
+        if os.path.exists(gt_path):
+            with open(gt_path, encoding="utf-8") as f:
+                reference = f.read()
+            cer = compute_cer(reference, result["raw_text"])
+            cer_results[gt_path] = cer
+            print(f"Ground Truth : {gt_path}")
+            print(f"CER          : {cer:.4f} ({cer * 100:.2f}%)\n")
+        else:
+            print(f"Ground truth not found, skipping: {gt_path}\n")
+
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    save_output(result, output_path)
+    save_output(result, output_path, cer_results)
 
 
 if __name__ == "__main__":

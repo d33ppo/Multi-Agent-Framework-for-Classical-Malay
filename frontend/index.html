@@ -12,64 +12,45 @@
   />
   <style>
     body { font-family: 'Inter', sans-serif; }
-
     .jawi {
       font-family: 'Scheherazade New', 'Amiri', 'Arial Unicode MS', serif;
-      font-size: 1.35rem;
-      line-height: 2.4;
-      direction: rtl;
-      text-align: right;
+      font-size: 1.35rem; line-height: 2.4; direction: rtl; text-align: right;
     }
-
-    .fade-in {
-      animation: fadeIn 0.45s ease-out both;
-    }
+    .fade-in { animation: fadeIn 0.45s ease-out both; }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-
     .spin { animation: spin 0.9s linear infinite; }
     @keyframes spin {
       from { transform: rotate(0deg); }
       to   { transform: rotate(360deg); }
     }
-
     .stage-line {
-      width: 2px;
-      height: 28px;
+      width: 2px; height: 28px;
       background: linear-gradient(to bottom, #cbd5e1, #e2e8f0);
       margin-left: 19px;
     }
+    .agent-row { transition: background-color 0.25s ease; }
   </style>
 </head>
 
 <body class="bg-slate-50 min-h-screen">
 
-  <!-- ── Header ────────────────────────────────────────────────── -->
+  <!-- Header -->
   <header class="text-white shadow-xl" style="background: linear-gradient(135deg,#0b2545 0%,#1a4a8a 60%,#2563eb 100%)">
     <div class="max-w-4xl mx-auto px-6 py-8">
       <div class="flex items-start gap-5">
-
-        <!-- icon -->
         <div class="bg-white/20 rounded-xl p-3 flex-shrink-0 mt-0.5">
           <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round"
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
         </div>
-
         <div>
-          <p class="text-blue-300 text-xs font-semibold tracking-widest uppercase mb-1">
-            Final Year Project · NLP / AI
-          </p>
-          <h1 class="text-2xl font-bold leading-tight mb-2">
-            Multi-Agent Framework for Classical Malay
-          </h1>
-          <p class="text-blue-100 text-sm mb-4">
-            Majalah Qalam (1950–1969) · Jawi Script Understanding &amp; Knowledge Extraction
-          </p>
-          <!-- pipeline breadcrumb -->
+          <p class="text-blue-300 text-xs font-semibold tracking-widest uppercase mb-1">Final Year Project · NLP / AI</p>
+          <h1 class="text-2xl font-bold leading-tight mb-2">Multi-Agent Framework for Classical Malay</h1>
+          <p class="text-blue-100 text-sm mb-4">Majalah Qalam (1950–1969) · Jawi Script Understanding &amp; Knowledge Extraction</p>
           <div class="flex flex-wrap items-center gap-1.5 text-xs">
             <span class="bg-white/15 rounded-full px-3 py-1">OCR Jawi</span>
             <span class="text-blue-300">→</span>
@@ -82,12 +63,10 @@
             <span class="bg-white/15 rounded-full px-3 py-1">Knowledge Extraction</span>
           </div>
         </div>
-
       </div>
     </div>
   </header>
 
-  <!-- ── Main ──────────────────────────────────────────────────── -->
   <main class="max-w-4xl mx-auto px-4 py-8">
 
     <!-- ① Input card -->
@@ -96,10 +75,7 @@
         <span class="w-6 h-6 rounded-full bg-slate-600 text-white flex items-center justify-center text-xs font-bold">1</span>
         Input — OCR Jawi Text
       </h2>
-
-      <textarea
-        id="jawiInput"
-        rows="7"
+      <textarea id="jawiInput" rows="7"
         class="jawi w-full border border-slate-200 rounded-xl p-4 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
         placeholder="Tampalkan teks Jawi di sini…"
       >حکايت ڤترڠ هاتي کارڠن اوليه
@@ -113,22 +89,21 @@
       <div class="flex flex-wrap items-center gap-4 mt-5">
         <div class="flex items-center gap-2 flex-wrap">
           <label for="modelSelect" class="text-sm text-slate-600 font-medium">Model:</label>
-          <select
-            id="modelSelect"
-            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
+          <select id="modelSelect"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <optgroup label="Anthropic (via OpenRouter)">
+              <option value="anthropic/claude-sonnet-4-6" selected>Claude Sonnet 4.6 (Recommended)</option>
+              <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku (faster)</option>
+            </optgroup>
             <optgroup label="Google">
-              <option value="google/gemini-2.5-flash" selected>Gemini 2.5 Flash (Recommended)</option>
-              <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (faster)</option>
-              <option value="google/gemini-2.5-pro">Gemini 2.5 Pro (highest quality)</option>
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+              <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
             </optgroup>
             <optgroup label="Qwen">
               <option value="qwen/qwen3-30b-a3b">Qwen3 30B</option>
               <option value="qwen/qwen3-235b-a22b">Qwen3 235B</option>
               <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
-            </optgroup>
-            <optgroup label="Anthropic (via OpenRouter)">
-              <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku</option>
             </optgroup>
             <optgroup label="OpenAI (via OpenRouter)">
               <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
@@ -141,17 +116,11 @@
             </optgroup>
           </select>
         </div>
-
-        <button
-          id="runBtn"
-          onclick="runPipeline()"
-          class="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <!-- play icon -->
+        <button id="runBtn" onclick="runPipeline()"
+          class="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           <svg id="iconPlay" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
           </svg>
-          <!-- spinner icon -->
           <svg id="iconSpin" class="w-4 h-4 spin hidden" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
           </svg>
@@ -165,14 +134,100 @@
       <strong>Error:</strong> <span id="errorMsg"></span>
     </div>
 
+    <!-- ── Pipeline Execution Log ─────────────────────────────── -->
+    <div id="pipelineLog" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-2">
+      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        Pipeline Execution
+      </h2>
+
+      <div class="space-y-1.5">
+
+        <!-- Orchestrator row -->
+        <div id="step-orchestrator"
+          class="agent-row flex items-center gap-3 py-2 px-3 rounded-lg bg-slate-50 border border-slate-100">
+          <div class="agent-icon w-5 h-5 flex-shrink-0 flex items-center justify-center">
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/>
+            </svg>
+          </div>
+          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide flex-shrink-0">Orchestrator</span>
+          <span id="orchestrator-label" class="text-xs text-slate-400 italic flex-1">Analysing input…</span>
+          <span id="orchestrator-duration" class="text-xs font-mono text-slate-400 w-12 text-right"></span>
+        </div>
+
+        <!-- Romanisation row -->
+        <div id="step-romanisation" class="agent-row flex items-center gap-3 py-2 px-3 rounded-lg bg-slate-50">
+          <div class="agent-icon w-5 h-5 flex-shrink-0 flex items-center justify-center">
+            <div class="w-4 h-4 rounded-full border-2 border-slate-300"></div>
+          </div>
+          <span class="text-xs text-slate-400 w-4 flex-shrink-0">①</span>
+          <span class="text-sm font-medium text-slate-700 flex-1">Romanisation Agent</span>
+          <span class="text-xs text-slate-400 hidden sm:block">Jawi → Classical Rumi</span>
+          <span class="agent-duration text-xs font-mono text-slate-400 w-12 text-right"></span>
+        </div>
+
+        <!-- Quality Gate sub-row (hidden until quality_gate_check fires) -->
+        <div id="step-quality-gate" class="hidden agent-row flex items-center gap-3 py-1.5 pl-10 pr-3 rounded-lg bg-slate-50">
+          <div class="agent-icon w-4 h-4 flex-shrink-0 flex items-center justify-center">
+            <div class="w-3 h-3 rounded-full border-2 border-slate-300"></div>
+          </div>
+          <span class="text-xs text-slate-500 flex-1" id="quality-gate-label">Checking quality…</span>
+          <span id="quality-gate-duration" class="text-xs font-mono text-slate-400 w-12 text-right"></span>
+        </div>
+
+        <!-- Translation row -->
+        <div id="step-translation" class="agent-row flex items-center gap-3 py-2 px-3 rounded-lg bg-slate-50">
+          <div class="agent-icon w-5 h-5 flex-shrink-0 flex items-center justify-center">
+            <div class="w-4 h-4 rounded-full border-2 border-slate-300"></div>
+          </div>
+          <span class="text-xs text-slate-400 w-4 flex-shrink-0">②</span>
+          <span class="text-sm font-medium text-slate-700 flex-1">Translation Agent</span>
+          <span class="text-xs text-slate-400 hidden sm:block">Classical → Modern Malay</span>
+          <span class="agent-duration text-xs font-mono text-slate-400 w-12 text-right"></span>
+        </div>
+
+        <!-- Summary row -->
+        <div id="step-summary" class="agent-row flex items-center gap-3 py-2 px-3 rounded-lg bg-slate-50">
+          <div class="agent-icon w-5 h-5 flex-shrink-0 flex items-center justify-center">
+            <div class="w-4 h-4 rounded-full border-2 border-slate-300"></div>
+          </div>
+          <span class="text-xs text-slate-400 w-4 flex-shrink-0">③</span>
+          <span class="text-sm font-medium text-slate-700 flex-1">Summary Agent</span>
+          <span class="text-xs text-slate-400 hidden sm:block" id="summary-tag">Automatic summarisation</span>
+          <span class="agent-duration text-xs font-mono text-slate-400 w-12 text-right"></span>
+        </div>
+
+        <!-- Knowledge row -->
+        <div id="step-knowledge" class="agent-row flex items-center gap-3 py-2 px-3 rounded-lg bg-slate-50">
+          <div class="agent-icon w-5 h-5 flex-shrink-0 flex items-center justify-center">
+            <div class="w-4 h-4 rounded-full border-2 border-slate-300"></div>
+          </div>
+          <span class="text-xs text-slate-400 w-4 flex-shrink-0">④</span>
+          <span class="text-sm font-medium text-slate-700 flex-1">Knowledge Extraction</span>
+          <span class="text-xs text-slate-400 hidden sm:block" id="knowledge-tag">Structured entities &amp; facts</span>
+          <span class="agent-duration text-xs font-mono text-slate-400 w-12 text-right"></span>
+        </div>
+
+      </div>
+
+      <!-- Pipeline summary -->
+      <div id="pipelineSummary" class="hidden mt-4 pt-4 border-t border-slate-100 text-xs text-slate-500 flex flex-wrap gap-x-6 gap-y-1">
+        <span>Total: <strong id="totalTime" class="text-slate-700"></strong></span>
+        <span>Model: <strong id="logModel" class="text-slate-700"></strong></span>
+        <span>Mode: <strong id="logMode" class="text-slate-700"></strong></span>
+      </div>
+    </div>
+
     <!-- ── Pipeline results ────────────────────────────────────── -->
     <div id="results" class="hidden">
 
-      <!-- connector -->
       <div class="stage-line"></div>
 
-      <!-- ② Romanisation -->
-      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #3b82f6;">
+      <!-- Romanisation -->
+      <div id="card-romanisation" class="hidden fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #3b82f6;">
         <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3 flex items-center gap-2">
           <span class="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
           Romanisation
@@ -183,8 +238,8 @@
 
       <div class="stage-line"></div>
 
-      <!-- ③ Translation -->
-      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #10b981; animation-delay: 0.05s;">
+      <!-- Translation -->
+      <div id="card-translation" class="hidden fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #10b981; animation-delay: 0.05s;">
         <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3 flex items-center gap-2">
           <span class="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
           Modern Malay Translation
@@ -195,8 +250,8 @@
 
       <div class="stage-line"></div>
 
-      <!-- ④ Summary -->
-      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #8b5cf6; animation-delay: 0.10s;">
+      <!-- Summary -->
+      <div id="card-summary" class="hidden fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-0" style="border-left: 4px solid #8b5cf6; animation-delay: 0.10s;">
         <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3 flex items-center gap-2">
           <span class="w-6 h-6 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">4</span>
           Summary
@@ -207,8 +262,8 @@
 
       <div class="stage-line"></div>
 
-      <!-- ⑤ Knowledge Extraction -->
-      <div class="fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6" style="border-left: 4px solid #f59e0b; animation-delay: 0.15s;">
+      <!-- Knowledge Extraction -->
+      <div id="card-knowledge" class="hidden fade-in bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6" style="border-left: 4px solid #f59e0b; animation-delay: 0.15s;">
         <h3 class="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-4 flex items-center gap-2">
           <span class="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">5</span>
           Knowledge Extraction
@@ -218,13 +273,13 @@
       </div>
 
       <!-- Metadata bar -->
-      <div id="metaBar" class="bg-slate-100 border border-slate-200 rounded-xl px-5 py-3 text-xs text-slate-500 flex flex-wrap gap-x-6 gap-y-1 mb-10">
+      <div id="metaBar" class="hidden bg-slate-100 border border-slate-200 rounded-xl px-5 py-3 text-xs text-slate-500 flex flex-wrap gap-x-6 gap-y-1 mb-10">
         <span>Model: <strong id="metaModel" class="text-slate-700"></strong></span>
         <span>Mode: <strong id="metaMode" class="text-slate-700"></strong></span>
         <span>Processing time: <strong id="metaTime" class="text-slate-700"></strong></span>
       </div>
 
-    </div><!-- /results -->
+    </div>
 
   </main>
 
@@ -235,34 +290,236 @@
   <script>
     // ── Knowledge card config ─────────────────────────────────────
     const KW = {
-      people:        { label: 'People',        icon: '👤', bg: 'bg-blue-50',   badge: 'bg-blue-100 text-blue-800' },
+      people:        { label: 'People',        icon: '👤', bg: 'bg-blue-50',    badge: 'bg-blue-100 text-blue-800' },
       places:        { label: 'Places',        icon: '📍', bg: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-800' },
-      dates:         { label: 'Dates',         icon: '📅', bg: 'bg-yellow-50', badge: 'bg-yellow-100 text-yellow-800' },
+      dates:         { label: 'Dates',         icon: '📅', bg: 'bg-yellow-50',  badge: 'bg-yellow-100 text-yellow-800' },
       organizations: { label: 'Organizations', icon: '🏛️', bg: 'bg-purple-50',  badge: 'bg-purple-100 text-purple-800' },
-      themes:        { label: 'Themes',        icon: '🏷️', bg: 'bg-pink-50',   badge: 'bg-pink-100 text-pink-800' },
-      key_claims:    { label: 'Key Claims',    icon: '💡', bg: 'bg-orange-50', badge: 'bg-orange-100 text-orange-800' },
+      themes:        { label: 'Themes',        icon: '🏷️', bg: 'bg-pink-50',    badge: 'bg-pink-100 text-pink-800' },
+      key_claims:    { label: 'Key Claims',    icon: '💡', bg: 'bg-orange-50',  badge: 'bg-orange-100 text-orange-800' },
     };
 
-    // ── Run pipeline ──────────────────────────────────────────────
-    async function runPipeline() {
-      const jawi     = document.getElementById('jawiInput').value.trim();
-      const model = document.getElementById('modelSelect').value;
+    // SVG snippets
+    const ICON_WAITING  = `<div class="w-4 h-4 rounded-full border-2 border-slate-300"></div>`;
+    const ICON_RUNNING  = `<svg class="w-4 h-4 text-blue-500 spin" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>`;
+    const ICON_DONE     = `<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`;
+    const ICON_ERROR    = `<svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`;
+    const ICON_SKIPPED  = `<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>`;
+    const ICON_WARN     = `<svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>`;
 
+    // ── Agent step status ─────────────────────────────────────────
+    function setAgentStatus(agentId, status, duration) {
+      const row = document.getElementById(`step-${agentId}`);
+      if (!row) return;
+      const iconEl     = row.querySelector('.agent-icon');
+      const durationEl = row.querySelector('.agent-duration');
+      row.classList.remove('bg-slate-50', 'bg-blue-50', 'bg-green-50', 'bg-red-50', 'bg-amber-50', 'opacity-40');
+
+      if (status === 'waiting') {
+        iconEl.innerHTML = ICON_WAITING; durationEl.textContent = ''; row.classList.add('bg-slate-50');
+      } else if (status === 'running') {
+        iconEl.innerHTML = ICON_RUNNING; durationEl.textContent = ''; row.classList.add('bg-blue-50');
+      } else if (status === 'done') {
+        iconEl.innerHTML = ICON_DONE;
+        durationEl.textContent = duration ? `${duration}s` : '';
+        row.classList.add('bg-green-50');
+      } else if (status === 'error') {
+        iconEl.innerHTML = ICON_ERROR; durationEl.textContent = ''; row.classList.add('bg-red-50');
+      } else if (status === 'skipped') {
+        iconEl.innerHTML = ICON_SKIPPED; durationEl.textContent = '—'; row.classList.add('bg-slate-50', 'opacity-40');
+      }
+    }
+
+    // ── Orchestrator decision ─────────────────────────────────────
+    function handleOrchestratorDecision(event) {
+      const row = document.getElementById('step-orchestrator');
+      row.classList.remove('bg-slate-50', 'bg-green-50');
+      row.classList.add('bg-green-50', 'border-green-200');
+
+      const icon = row.querySelector('.agent-icon');
+      icon.innerHTML = ICON_DONE;
+
+      document.getElementById('orchestrator-label').textContent  = event.label;
+      document.getElementById('orchestrator-label').classList.remove('italic', 'text-slate-400');
+      document.getElementById('orchestrator-label').classList.add('text-slate-600');
+      document.getElementById('orchestrator-duration').textContent = event.duration ? `${event.duration}s` : '';
+
+      // If skip_summary, dim summary row immediately
+      if (event.skip_summary) {
+        const summaryRow = document.getElementById('step-summary');
+        if (summaryRow) {
+          summaryRow.classList.add('opacity-40');
+          document.getElementById('summary-tag').textContent = 'Skipped by orchestrator';
+        }
+      } else {
+        // Show parallel badge on summary + knowledge
+        document.getElementById('summary-tag').textContent   = 'Parallel execution';
+        document.getElementById('knowledge-tag').textContent = 'Parallel execution';
+      }
+    }
+
+    // ── Quality gate ──────────────────────────────────────────────
+    function handleQualityGateCheck() {
+      const row = document.getElementById('step-quality-gate');
+      row.classList.remove('hidden');
+      row.classList.add('bg-blue-50');
+      row.querySelector('.agent-icon').innerHTML = ICON_RUNNING;
+      document.getElementById('quality-gate-label').textContent = 'Checking romanisation quality…';
+    }
+
+    function handleQualityGateRetry(event) {
+      const row = document.getElementById('step-quality-gate');
+      row.classList.remove('bg-blue-50');
+      row.classList.add('bg-amber-50');
+      row.querySelector('.agent-icon').innerHTML = ICON_WARN;
+      document.getElementById('quality-gate-label').textContent =
+        `Score ${event.score}/100 — below threshold, retrying with enhanced prompt…`;
+    }
+
+    function handleQualityGateDone(event) {
+      const row = document.getElementById('step-quality-gate');
+      row.classList.remove('bg-blue-50', 'bg-amber-50');
+      const passed = event.score >= 70;
+      row.classList.add(passed ? 'bg-green-50' : 'bg-amber-50');
+      row.querySelector('.agent-icon').innerHTML = passed ? ICON_DONE : ICON_WARN;
+      const retryNote = event.retried ? ' (after retry)' : '';
+      document.getElementById('quality-gate-label').textContent =
+        `Score ${event.score}/100 — ${passed ? 'passed' : 'marginal'}${retryNote}`;
+      document.getElementById('quality-gate-duration').textContent = event.duration ? `${event.duration}s` : '';
+    }
+
+    // ── SSE dispatcher ────────────────────────────────────────────
+    function handleSSEEvent(event) {
+      if (event.type === 'orchestrator_decision') {
+        handleOrchestratorDecision(event);
+
+      } else if (event.type === 'agent_start') {
+        setAgentStatus(event.agent, 'running');
+
+      } else if (event.type === 'agent_done') {
+        setAgentStatus(event.agent, 'done', event.duration);
+        revealResult(event.agent, event.result);
+
+      } else if (event.type === 'agent_skipped') {
+        setAgentStatus(event.agent, 'skipped');
+
+      } else if (event.type === 'quality_gate_check') {
+        handleQualityGateCheck();
+
+      } else if (event.type === 'quality_gate_retry') {
+        handleQualityGateRetry(event);
+
+      } else if (event.type === 'quality_gate_done') {
+        handleQualityGateDone(event);
+
+      } else if (event.type === 'pipeline_done') {
+        document.getElementById('totalTime').textContent = event.total_duration + 's';
+        document.getElementById('logModel').textContent  = event.model;
+        document.getElementById('logMode').textContent   = event.mode === 'live' ? '🟢 live' : '🟡 mock';
+        document.getElementById('pipelineSummary').classList.remove('hidden');
+        document.getElementById('metaModel').textContent = event.model;
+        document.getElementById('metaMode').textContent  = event.mode === 'live' ? '🟢 live' : '🟡 mock';
+        document.getElementById('metaTime').textContent  = event.total_duration + 's';
+        document.getElementById('metaBar').classList.remove('hidden');
+
+      } else if (event.type === 'error') {
+        showError(event.message);
+        ['romanisation', 'translation', 'summary', 'knowledge'].forEach(id => {
+          const row = document.getElementById(`step-${id}`);
+          if (row && row.classList.contains('bg-blue-50')) setAgentStatus(id, 'error');
+        });
+      }
+    }
+
+    // ── Reveal result card ────────────────────────────────────────
+    function revealResult(agent, result) {
+      document.getElementById('results').classList.remove('hidden');
+      const card = document.getElementById(`card-${agent}`);
+      if (card) card.classList.remove('hidden');
+      if (agent === 'romanisation')  document.getElementById('romanizedText').textContent   = result;
+      if (agent === 'translation')   document.getElementById('translationText').textContent  = result;
+      if (agent === 'summary')       document.getElementById('summaryText').textContent      = result;
+      if (agent === 'knowledge')     renderKnowledge(result);
+    }
+
+    // ── Reset UI ──────────────────────────────────────────────────
+    function resetUI() {
+      ['romanisation', 'translation', 'summary', 'knowledge'].forEach(id => {
+        setAgentStatus(id, 'waiting');
+        const card = document.getElementById(`card-${id}`);
+        if (card) card.classList.add('hidden');
+      });
+
+      // Reset orchestrator row
+      const orchRow = document.getElementById('step-orchestrator');
+      orchRow.classList.remove('bg-green-50', 'border-green-200');
+      orchRow.classList.add('bg-slate-50');
+      orchRow.querySelector('.agent-icon').innerHTML =
+        `<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/></svg>`;
+      document.getElementById('orchestrator-label').textContent = 'Analysing input…';
+      document.getElementById('orchestrator-label').className = 'text-xs text-slate-400 italic flex-1';
+      document.getElementById('orchestrator-duration').textContent = '';
+
+      // Reset quality gate row
+      const gqRow = document.getElementById('step-quality-gate');
+      gqRow.classList.add('hidden');
+      gqRow.classList.remove('bg-blue-50', 'bg-amber-50', 'bg-green-50');
+      gqRow.classList.add('bg-slate-50');
+      gqRow.querySelector('.agent-icon').innerHTML = `<div class="w-3 h-3 rounded-full border-2 border-slate-300"></div>`;
+      document.getElementById('quality-gate-label').textContent = 'Checking quality…';
+      document.getElementById('quality-gate-duration').textContent = '';
+
+      // Reset parallel tags
+      document.getElementById('summary-tag').textContent   = 'Automatic summarisation';
+      document.getElementById('knowledge-tag').textContent = 'Structured entities & facts';
+
+      document.getElementById('pipelineSummary').classList.add('hidden');
+      document.getElementById('results').classList.add('hidden');
+      document.getElementById('metaBar').classList.add('hidden');
+    }
+
+    // ── Run pipeline (SSE streaming) ──────────────────────────────
+    async function runPipeline() {
+      const jawi  = document.getElementById('jawiInput').value.trim();
+      const model = document.getElementById('modelSelect').value;
       if (!jawi) { showError('Please enter Jawi text first.'); return; }
 
       setLoading(true);
       hideError();
-      document.getElementById('results').classList.add('hidden');
+      resetUI();
+      document.getElementById('pipelineLog').classList.remove('hidden');
 
       try {
         const res = await fetch('/api/pipeline/run', {
-          method: 'POST',
+          method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jawi_text: jawi, model }),
+          body:    JSON.stringify({ jawi_text: jawi, model }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-        displayResults(data);
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || `HTTP ${res.status}`);
+        }
+
+        const reader  = res.body.getReader();
+        const decoder = new TextDecoder();
+        let   buffer  = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data: ')) continue;
+            try { handleSSEEvent(JSON.parse(line.slice(6))); } catch (_) {}
+          }
+        }
+        if (buffer.trim().startsWith('data: ')) {
+          try { handleSSEEvent(JSON.parse(buffer.trim().slice(6))); } catch (_) {}
+        }
+
       } catch (err) {
         showError(err.message);
       } finally {
@@ -270,51 +527,24 @@
       }
     }
 
-    // ── Display results ───────────────────────────────────────────
-    function displayResults(data) {
-      const r = data.result;
-      const m = data.metadata;
-
-      document.getElementById('romanizedText').textContent  = r.romanized_text;
-      document.getElementById('translationText').textContent = r.modern_malay_translation;
-      document.getElementById('summaryText').textContent    = r.summary;
-
-      renderKnowledge(r.knowledge_extraction);
-
-      document.getElementById('metaModel').textContent = m.model;
-      document.getElementById('metaMode').textContent  = m.mode === 'live' ? '🟢 live' : '🟡 mock';
-      document.getElementById('metaTime').textContent  = m.processing_time_seconds + 's';
-
-      document.getElementById('results').classList.remove('hidden');
-      document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    // ── Knowledge extraction grid ─────────────────────────────────
+    // ── Knowledge grid ────────────────────────────────────────────
     function renderKnowledge(knowledge) {
       const grid = document.getElementById('knowledgeGrid');
       grid.innerHTML = '';
-
       for (const [key, cfg] of Object.entries(KW)) {
         const items = knowledge[key] || [];
-
-        const card = document.createElement('div');
+        const card  = document.createElement('div');
         card.className = `${cfg.bg} rounded-xl p-3`;
-
-        // header
         const hdr = document.createElement('div');
         hdr.className = 'flex items-center gap-1.5 mb-2';
-        hdr.innerHTML = `
-          <span class="text-sm">${cfg.icon}</span>
+        hdr.innerHTML = `<span class="text-sm">${cfg.icon}</span>
           <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">${cfg.label}</span>
-          <span class="ml-auto text-xs text-slate-400 font-medium">${items.length}</span>
-        `;
+          <span class="ml-auto text-xs text-slate-400 font-medium">${items.length}</span>`;
         card.appendChild(hdr);
-
         if (items.length === 0) {
-          const empty = document.createElement('p');
-          empty.className = 'text-xs text-slate-400 italic';
-          empty.textContent = 'None found';
-          card.appendChild(empty);
+          const e = document.createElement('p');
+          e.className = 'text-xs text-slate-400 italic'; e.textContent = 'None found';
+          card.appendChild(e);
         } else {
           const wrap = document.createElement('div');
           wrap.className = 'flex flex-wrap gap-1';
@@ -326,34 +556,23 @@
           });
           card.appendChild(wrap);
         }
-
         grid.appendChild(card);
       }
     }
 
     // ── UI helpers ────────────────────────────────────────────────
     function setLoading(on) {
-      const btn  = document.getElementById('runBtn');
-      const play = document.getElementById('iconPlay');
-      const spin = document.getElementById('iconSpin');
-      const lbl  = document.getElementById('btnLabel');
-
-      btn.disabled = on;
-      play.classList.toggle('hidden', on);
-      spin.classList.toggle('hidden', !on);
-      lbl.textContent = on ? 'Processing…' : 'Run Pipeline';
+      document.getElementById('runBtn').disabled = on;
+      document.getElementById('iconPlay').classList.toggle('hidden', on);
+      document.getElementById('iconSpin').classList.toggle('hidden', !on);
+      document.getElementById('btnLabel').textContent = on ? 'Processing…' : 'Run Pipeline';
     }
-
     function showError(msg) {
       document.getElementById('errorMsg').textContent = msg;
       document.getElementById('errorBox').classList.remove('hidden');
     }
+    function hideError() { document.getElementById('errorBox').classList.add('hidden'); }
 
-    function hideError() {
-      document.getElementById('errorBox').classList.add('hidden');
-    }
-
-    // Allow Ctrl+Enter to submit
     document.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runPipeline();
     });

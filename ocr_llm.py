@@ -9,7 +9,7 @@ Results are returned in the same dict format as ocr_jawi.extract_jawi_text()
 for easy comparison.
 
 Usage:
-    python ocr_llm.py <image_path> [output_path]
+    python ocr_llm.py data/input/jawi_image_data/1950_07_002_3.png data/output/jawi_text_llm_&_tesseract/vlm_1950_07_002_3.txt
 
 Configure via .env:
     OPENROUTER_API_KEY      — required
@@ -26,6 +26,8 @@ import mimetypes
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from ocr_jawi import compute_cer
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -194,7 +196,7 @@ def extract_jawi_text_llm(image_path: str, provider: str = "openrouter") -> dict
     return PROVIDERS[provider](image_path)
 
 
-def save_output(result: dict, output_path: str) -> None:
+def save_output(result: dict, output_path: str, cer_results: dict | None = None) -> None:
     """Save LLM OCR result to a text file."""
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -211,6 +213,11 @@ def save_output(result: dict, output_path: str) -> None:
         if result.get("usage"):
             f.write(f"Tokens In    : {result['usage'].get('input_tokens', 'N/A')}\n")
             f.write(f"Tokens Out   : {result['usage'].get('output_tokens', 'N/A')}\n")
+        if cer_results:
+            f.write("\n=== CER Evaluation ===\n")
+            for gt_path, cer in cer_results.items():
+                f.write(f"Ground Truth : {gt_path}\n")
+                f.write(f"CER          : {cer:.4f} ({cer * 100:.2f}%)\n\n")
     print(f"Output saved to: {output_path}")
 
 
@@ -220,14 +227,12 @@ def save_output(result: dict, output_path: str) -> None:
 
 
 def main():
-    image_path = sys.argv[1] if len(sys.argv) > 1 else "test-data/jawi-manuscript-4.png"
+    image_path = sys.argv[1] if len(sys.argv) > 1 else "data/input/jawi_image_data/1950_07_002_4.png"
+    output_path = sys.argv[2] if len(sys.argv) > 2 else "data/output/jawi_text_llm_&_tesseract/vlm_1950_07_002_4.txt"
 
-    if len(sys.argv) > 2:
-        output_path = sys.argv[2]
-    else:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        base_name = os.path.splitext(os.path.basename(image_path))[0]
-        output_path = f"output/jawi_llm_openrouter_{base_name}_{timestamp}_output.txt"
+    # Derive ground truth path from input filename, e.g. 1950_07_002_3.png -> 1950_07_002_3.txt
+    input_base = os.path.splitext(os.path.basename(image_path))[0]
+    gt_path = os.path.join("data/ground_truth", f"{input_base}.txt")
 
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
@@ -247,7 +252,19 @@ def main():
     if result.get("cost_estimate_usd") is not None:
         print(f"Est. Cost    : ${result['cost_estimate_usd']}")
 
-    save_output(result, output_path)
+    cer_results = {}
+    print("\n=== CER Evaluation ===")
+    if os.path.exists(gt_path):
+        with open(gt_path, encoding="utf-8") as f:
+            reference = f.read()
+        cer = compute_cer(reference, result["raw_text"])
+        cer_results[gt_path] = cer
+        print(f"Ground Truth : {gt_path}")
+        print(f"CER          : {cer:.4f} ({cer * 100:.2f}%)")
+    else:
+        print(f"Ground truth not found, skipping: {gt_path}")
+
+    save_output(result, output_path, cer_results)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover
 ENV_FILE = Path(__file__).resolve().parent / ".env"
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "google/gemini-2.5-flash"
+DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
 
 
 def _load_env_file(env_file: Path = ENV_FILE) -> None:
