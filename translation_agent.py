@@ -24,7 +24,7 @@ def run_translation_agent(romanized_text: str, runtime: LLMTextRuntime) -> str:
 
     return runtime.generate_text(
         system_prompt=SYSTEM_PROMPT,
-        user_prompt=f"Terjemahkan teks Melayu Klasik beroman ini ke Bahasa Melayu moden:\n\n{romanized_text}",
+        user_prompt=f"Terjemahkan teks Melayu Klasik Rumi ini ke Bahasa Melayu moden:\n\n{romanized_text}",
         max_tokens=10000,
         temperature=0.15,
     )
