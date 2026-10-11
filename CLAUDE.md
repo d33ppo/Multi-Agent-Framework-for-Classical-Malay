@@ -40,8 +40,9 @@ Runtime Fault Handler wraps every stage: on exception/timeout/empty output it lo
 
 - **Source:** Majalah Qalam scanned PDFs and existing romanised PDFs
 - **Ground truth columns:** `file_name`, `rumi_sentence`, `jawi_autotransliterated`, `jawi_corrected`
-- **Target:** approximately 5 annotated issues, approximately 6,000 line-level image-text pairs
-- **Split by issue:** 3 issues for training (~3,600 lines), 1 for validation (~1,200 lines), 1 for testing (~1,200 lines)
+- **Human-corrected ground truth:** issues 1950_11 and 1950_12 only. Issues 1950_07, 1950_09 and 1950_10 are uncorrected and are excluded unless corrected text arrives
+- **Split:** by article into train, validation and test (not by issue)
+- **Line count:** TBD, to be taken from the annotation export
 - **Gold standard for romanisation evaluation:** existing Majalah Qalam romanised PDFs
 
 ### Evaluation Plan
@@ -76,12 +77,15 @@ Total corpus line count is TBD — compute from annotation data (average lines/p
 
 ## Current Progress
 
-- **Dataset preparation:** 2 issues annotated, targeting 5
-- **TrOCR fine-tuning:** in progress
-- **Agent pipeline:** implemented with Method A/B romanisation, agreement gate, fault handler, concurrent summary + KE (`pipeline_runner.py`); LangChain and Supabase persistence not yet wired in
-- **Frontend:** React app scaffolded
-- **Backend:** FastAPI scaffolded
-- **Supabase:** connected
+The Stack list above is the target stack. This section states what exists in the repo today.
+
+- **Dataset preparation:** 2 issues (1950_11, 1950_12) have human-corrected ground truth. 1950_07, 1950_09 and 1950_10 are uncorrected and excluded
+- **TrOCR:** no training or inference code in this repo yet
+- **Agent pipeline:** implemented with Method A/B romanisation, agreement gate, fault handler, concurrent summary + KE (`pipeline_runner.py`)
+- **LangChain:** not used in code yet. Agents call OpenRouter directly through `llm_text_runtime.py`
+- **Frontend:** a single static `frontend/index.html`, not a React app yet
+- **Backend:** FastAPI app in `backend/main.py` with a health route and the streaming pipeline route
+- **Supabase:** not implemented in code yet. The CLI runner writes results to local files under `output/`
 
 ---
 

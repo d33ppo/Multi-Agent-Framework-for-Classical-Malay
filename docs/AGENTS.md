@@ -48,6 +48,19 @@ docs/          # Documentation
 - Database and storage: Supabase.
 - Deployment: local prototype first, optional Docker later.
 
+## Current Implementation Status
+
+The stack above is the target. This is what exists in the repo today. Keep this section consistent with "Current Progress" and "Dataset" in `CLAUDE.md`.
+
+- Dataset: only issues 1950_11 and 1950_12 have human-corrected ground truth. Issues 1950_07, 1950_09 and 1950_10 are uncorrected and are excluded unless corrected text arrives.
+- Dataset split: by article into train, validation and test, not by issue. Line count is TBD from the annotation export.
+- TrOCR: no training or inference code in this repo yet.
+- Agent pipeline: implemented in `pipeline_runner.py` with Method A/B romanisation, agreement gate, fault handler, and concurrent summarisation and knowledge extraction.
+- LangChain: not used in code yet. Agents call OpenRouter directly through `llm_text_runtime.py`.
+- Frontend: a single static `frontend/index.html`, not a React app yet.
+- Backend: FastAPI app in `backend/main.py` with a health route and the streaming pipeline route.
+- Supabase: not implemented in code yet. The CLI runner writes results to local files under `output/`.
+
 ## Forbidden Changes
 
 - Do not change architecture without updating `docs/SAD.md`.

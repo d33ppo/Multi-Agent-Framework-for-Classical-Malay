@@ -142,7 +142,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 
 | Area | Acceptance Criteria |
 | --- | --- |
-| OCR | Fine-tuned OCR reaches CER of at most 10% and character accuracy of at least 90% on the held-out test issue. |
+| OCR | Fine-tuned OCR reaches CER of at most 10% and character accuracy of at least 90% on the held-out test split (split by article). |
 | Romanisation gate | Method A/B agreement is reported per item; items below 85% are flagged for human review. |
 | Evaluation method | Stage metrics use BLEU/chrF, human rubric, ROUGE, and F1 only. LLM-as-a-judge is not used. |
 | OCR benchmark | Fine-tuned OCR, Tesseract, and VLM OCR are compared where configured and references exist. |
