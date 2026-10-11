@@ -11,7 +11,8 @@ from llm_text_runtime import (
 )
 from ocr_input_adapter import load_ocr_input
 from pipeline_runner import run_pipeline
-from romanisation_agent import run_romanisation_agent
+from jawi_dictionary import JawiRumiDictionary
+from romanisation_agent import MockNeuralRomaniser, run_romanisation_agent
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -98,14 +99,18 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("حکايت", record.ocr_jawi_text)
 
     def test_parse_saved_ocr_output(self):
-        record = load_ocr_input(str(ROOT / "output" / "jawi_ocr_output-4.txt"))
+        record = load_ocr_input(str(ROOT / "data" / "output" / "jawi_text_llm_&_tesseract" / "jawi_ocr_output-4.txt"))
         self.assertEqual(record.ocr_provider, "tesseract")
         self.assertIn("confidence", record.metadata)
 
     def test_mock_romanisation(self):
-        runtime = LLMTextRuntime(provider="mock")
-        text = run_romanisation_agent("حکايت", runtime)
-        self.assertIn("MOCK", text)
+        outcome = run_romanisation_agent(
+            "حکايت",
+            neural=MockNeuralRomaniser(),
+            dictionary=JawiRumiDictionary({"حكايت": {"hikayat": 10}}),
+        )
+        self.assertIn("MOCK", outcome.text)
+        self.assertEqual(outcome.method_b.output.text, "hikayat")
 
     def test_mock_pipeline_generates_artifacts(self):
         tmpdir = ROOT / "output" / "test_pipeline_temp"
@@ -116,11 +121,14 @@ class PipelineTests(unittest.TestCase):
                 str(ROOT / "data" / "input" / "pipeline_inputs" / "good_qwen_sample.txt"),
                 provider="mock",
                 output_dir=str(tmpdir),
+                dictionary=JawiRumiDictionary({}),
             )
             json_path = Path(artifacts["json_path"])
             md_path = Path(artifacts["markdown_path"])
             self.assertTrue(json_path.exists())
             self.assertTrue(md_path.exists())
+            self.assertTrue((json_path.parent / "02b_romanized_method_b.txt").exists())
+            self.assertIn("Inter-Method Agreement Gate", md_path.read_text(encoding="utf-8"))
         finally:
             if tmpdir.exists():
                 shutil.rmtree(tmpdir)
