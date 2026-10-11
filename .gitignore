@@ -1,6 +1,25 @@
+# Secrets and local settings
+.env
+.claude/settings.local.json
+
+# Local data, generated outputs and temp files
+data/
 output/
+runs/
+_to_delete/
+
+# Python caches
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Model weights and OCR language data
+*.pt
+*.safetensors
 tessdata/
-test-data/
-.env
+
+# Private viva notes
+VIVA_MASTER_STUDY_GUIDE.*
+VIVA1_PANEL_CRITIQUE_AND_QA.*
+MODELS_COORDINATION_ERRORHANDLING.*
+DEMO_SCRIPT.md
