@@ -27,12 +27,14 @@ Keep this file consistent with `docs/AGENTS.md`.
 1. Scanned Jawi PDF or image input
 2. Pre-processing — OpenCV, PyMuPDF
 3. Fine-tuned TrOCR — extracts Jawi Unicode text
-4. Romanisation agent — Jawi to Classical Malay Rumi
-5. Translation agent — Classical Malay to Modern Malay
-6. Summarisation agent
-7. Knowledge extraction agent
+4. Romanisation agent — Method A (neural, jawi-nanot5-small) and Method B (reverse-lookup dictionary) run in parallel
+5. Inter-Method Agreement Gate — ≥85% character agreement to pass; below that, flag for human review
+6. Translation agent — Classical Malay to Modern Malay (OpenRouter LLM)
+7. Summarisation agent and Knowledge extraction agent — run concurrently on the translation
 8. Supabase storage
 9. React frontend display
+
+Runtime Fault Handler wraps every stage: on exception/timeout/empty output it logs, passes through the last valid output, and flags the stage incomplete.
 
 ### Dataset
 
@@ -46,17 +48,28 @@ Keep this file consistent with `docs/AGENTS.md`.
 
 | Stage | Gold Standard | Metric |
 |---|---|---|
-| OCR | `jawi_corrected` annotations | CER, character accuracy |
+| OCR | `jawi_corrected` annotations | CER ≤10%, character accuracy ≥90% (RO2 target) |
 | Romanisation | Majalah Qalam romanised PDFs | BLEU / chrF |
-| Translation | LLM-as-a-judge | Semantic score |
-| Summarisation | LLM-as-a-judge | Content coverage |
-| Knowledge extraction | LLM-as-a-judge | F1 entity/concept |
+| Translation | Small-sample human rubric (student + supervisor) | Adequacy + fluency, 1–5 |
+| Summarisation | ~20–30 human-written reference summaries | ROUGE |
+| Knowledge extraction | Manually tagged gold entities | F1 |
+
+Do not use LLM-as-a-judge anywhere in evaluation (rejected by panel and supervisor). Offline metrics live in `stage_metrics.py`.
+
+### Three distinct validation mechanisms (never call these "the Validation Agent")
+
+1. **Inter-Method Agreement Gate** — runtime, after romanisation (`agreement_gate.py`)
+2. **Stage Evaluation Metrics** — offline, thesis reporting only (`stage_metrics.py`)
+3. **Runtime Fault Handler** — runtime fault tolerance around every stage (`fault_handler.py`)
+
+Total corpus line count is TBD — compute from annotation data (average lines/page × ~7,980 pages). Do not use the 240k/270k placeholders.
 
 ### Key Jawi Constraints
 
 - Classical Malay Jawi has unique glyphs absent from standard Arabic: ca ﭺ, ga ڬ, nga ڠ, pa ڤ, va ۏ, nya ڽ
 - Tesseract fails on these glyphs — hence the custom TrOCR fine-tuning approach
-- No separate romanisation model is to be built — romanisation agent uses LLM on Unicode text only, which is text-to-text, not vision
+- Romanisation uses Method A (pretrained `mesolitica/jawi-nanot5-small-malaysian-cased`, used as-is, text-to-text) and Method B (reverse-lookup dictionary in `jawi_dictionary.py`, built with `python jawi_dictionary.py build`). No LLM romanisation and no fine-tuning of a romanisation model
+- Majalah Qalam uses pre-1986 Jawi spelling (ف for p, ة for final t, omitted vowel letters); the dictionary data is modern Jawi, so Method B retries old-spelling variants and flags low-confidence matches as ambiguous
 - Never overwrite original OCR output
 
 ---
@@ -65,7 +78,7 @@ Keep this file consistent with `docs/AGENTS.md`.
 
 - **Dataset preparation:** 2 issues annotated, targeting 5
 - **TrOCR fine-tuning:** in progress
-- **Agent pipeline:** partially implemented, see `romanisation_agent.py`
+- **Agent pipeline:** implemented with Method A/B romanisation, agreement gate, fault handler, concurrent summary + KE (`pipeline_runner.py`); LangChain and Supabase persistence not yet wired in
 - **Frontend:** React app scaffolded
 - **Backend:** FastAPI scaffolded
 - **Supabase:** connected
@@ -155,4 +168,4 @@ At the end of every change, provide a short summary listing:
 - Do not replace the FYP prototype with unnecessary complex infrastructure
 - Do not change the agent workflow without updating `docs/AGENTS.md` and `docs/SAD.md`
 - Do not remove human review from low-confidence or contradictory outputs
-- Do not fine-tune a separate romanisation model — romanisation is handled by the LLM agent only
+- Do not fine-tune a separate romanisation model — use the pretrained Method A model as-is plus the Method B dictionary

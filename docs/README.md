@@ -26,11 +26,13 @@ Generic OCR tools perform poorly on Classical Malay Jawi documents because of sc
 flowchart LR
     A[Upload Jawi PDF/Image] --> B[Preprocessing]
     B --> C[Fine-tuned OCR]
-    C --> E[Romanisation Agent]
-    E --> F[Translation Agent]
+    C --> E[Romanisation: Method A neural + Method B dictionary]
+    E --> GATE[Inter-Method Agreement Gate]
+    GATE --> F[Translation Agent]
     F --> G[Summarisation Agent]
-    G --> H[Knowledge Extraction Agent]
-    H --> I[Structured Output]
+    F --> H[Knowledge Extraction Agent]
+    G --> I[Structured Output]
+    H --> I
     I --> J[Supabase Storage]
 ```
 
@@ -66,6 +68,7 @@ project-root/
 4. Set up the React frontend.
 5. Configure Supabase tables using [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).
 6. Prepare a small pilot dataset with manually verified gold-standard text.
+7. Build the Method B romanisation dictionary (see [DEPLOYMENT.md](DEPLOYMENT.md#romanisation-method-b-dictionary)).
 
 ## Run Commands
 
@@ -78,6 +81,13 @@ uvicorn main:app --reload
 cd frontend
 npm install
 npm run dev
+
+# Method B dictionary (one-off, after downloading source files)
+python jawi_dictionary.py build
+python jawi_dictionary.py coverage data/ground_truth/*.txt
+
+# Offline stage evaluation metrics
+python stage_metrics.py romanisation eval/romanisation.jsonl
 
 # Tests
 pytest
@@ -133,7 +143,7 @@ For the FYP demo:
 ## Future Work
 
 - Expand dataset coverage after supervisor approval.
-- Improve OCR model accuracy beyond the 60% target.
+- Improve OCR model accuracy beyond the 90% accuracy / 10% CER target.
 - Add better Jawi-specific language model constraints.
 - Add a richer human review interface.
 - Add Docker deployment if required for demonstration.

@@ -31,12 +31,32 @@ OPENROUTER_MODEL=
 LLM_PROVIDER=openrouter
 ALLOW_EXTERNAL_MANUSCRIPT_API=false
 
+JAWI_NEURAL_MODEL=mesolitica/jawi-nanot5-small-malaysian-cased
+
 OCR_MODEL_PATH=
 OCR_CONFIDENCE_THRESHOLD=0.60
 MAX_UPLOAD_MB=25
 ```
 
 `ALLOW_EXTERNAL_MANUSCRIPT_API=false` should be the default. Set it to `true` only if manuscript data is allowed to be sent to configured external OCR/LLM/VLM providers.
+
+## Romanisation Method B Dictionary
+
+Method B needs a Jawi to Rumi lookup table built from `mesolitica/jawi-ms-en` (HuggingFace). No license is declared on that dataset card; the gathering repository (`malaysia-ai/malaysian-dataset`) is Apache-2.0 and the text is derived from Wikipedia. The files are stored under `data/`, which is gitignored.
+
+```bash
+mkdir -p data/method_b
+curl -L -o data/method_b/wikipedia-1word.json https://huggingface.co/datasets/mesolitica/jawi-ms-en/resolve/main/wikipedia-1word.json
+curl -L -o data/method_b/rumi-set.json https://huggingface.co/datasets/mesolitica/jawi-ms-en/resolve/main/rumi-set.json
+curl -L -o data/method_b/jawi-set.json https://huggingface.co/datasets/mesolitica/jawi-ms-en/resolve/main/jawi-set.json
+python jawi_dictionary.py build
+```
+
+Use `python jawi_dictionary.py build --words-only` to skip the ~59MB phrase files.
+
+## Romanisation Method A Model
+
+Method A runs `mesolitica/jawi-nanot5-small-malaysian-cased` (~358MB) locally with `transformers`. The weights download from HuggingFace on first use and are cached. Manuscript text is not sent to an external service for this step.
 
 ## Frontend Setup
 

@@ -43,6 +43,8 @@ docs/          # Documentation
 - OCR training and experiments: Python, Google Colab, PyTorch, OpenCV, PyMuPDF.
 - Agent framework: LangChain.
 - LLM access: OpenRouter or explicitly configured LLM APIs.
+- Romanisation Method A: HuggingFace `transformers` running `mesolitica/jawi-nanot5-small-malaysian-cased` locally.
+- Offline evaluation metrics: `sacrebleu` (BLEU/chrF), `rouge-score` (ROUGE).
 - Database and storage: Supabase.
 - Deployment: local prototype first, optional Docker later.
 
@@ -79,6 +81,22 @@ docs/          # Documentation
 - If API routes, request bodies, or response bodies change, update `docs/API_SPEC.md`.
 - If test coverage or acceptance criteria change, update `docs/QATD.md`.
 - If setup or deployment commands change, update `docs/DEPLOYMENT.md` and `docs/README.md`.
+
+## Agent Workflow
+
+```text
+OCR text
+  -> SubAgent 1 Romanisation: Method A (jawi-nanot5-small, neural) || Method B (reverse-lookup dictionary)
+  -> Inter-Method Agreement Gate (>=85% character agreement, else flag for human review)
+  -> SubAgent 2 Translation (OpenRouter LLM, default google/gemini-2.5-flash)
+  -> SubAgent 3 Summarisation || SubAgent 4 Knowledge Extraction (concurrent, both consume the translation)
+Runtime Fault Handler wraps every stage.
+```
+
+- Keep the three validation mechanisms separate and named: Inter-Method Agreement Gate (runtime), Stage Evaluation Metrics (offline), Runtime Fault Handler (runtime fault tolerance).
+- Do not use LLM-as-a-judge for scoring or evaluation.
+- Do not fine-tune a romanisation model; Method A is a pretrained model used as-is.
+- Changing this workflow requires updating `docs/SAD.md` and this file.
 
 ## Strict Project Rules
 

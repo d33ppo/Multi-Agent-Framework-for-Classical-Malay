@@ -81,9 +81,14 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 
 | ID | Test Case | Steps | Expected Result | Pass/Fail |
 | --- | --- | --- | --- | --- |
-| ROM-01 | Romanise valid OCR Jawi | Run Romanisation Agent. | Romanised text is produced and stored in `romanisation_outputs`. |  |
-| ROM-02 | Uncertain Jawi token | Include ambiguous OCR token. | Output includes uncertain token or note. |  |
-| ROM-03 | Compare to gold standard | Compare romanisation with reference. | BLEU or human review result is recorded. |  |
+| ROM-01 | Romanise valid OCR Jawi | Run Romanisation Agent. | Method A and Method B text are both produced; Method A is passed to Translation. |  |
+| ROM-02 | Ambiguous Jawi word | Include a Jawi spelling with several common Rumi readings. | Most frequent candidate is used and the word is logged as `ambiguous` with candidates. |  |
+| ROM-03 | Unknown Jawi word | Include a word missing from the dictionary. | Word stays visible as `⟦jawi⟧`, is logged as `unknown`, and nothing crashes. |  |
+| ROM-04 | Old (pre-1986) spelling | Include ف-for-p or final ة spellings. | Dictionary resolves the modern variant and records the rule used. |  |
+| ROM-05 | Methods agree | Mock A and B with matching output. | Agreement Gate passes (at least 85%). |  |
+| ROM-06 | Methods disagree | Mock A and B with different output. | Gate flags the item for human review; pipeline continues. |  |
+| ROM-07 | Method A fails | Mock neural model error. | Method B text is passed through; gate is skipped; stage marked incomplete. |  |
+| ROM-08 | Compare to gold standard | Run `stage_metrics.py romanisation` against Qalam romanised PDFs. | BLEU and chrF are recorded. |  |
 
 ## Translation Test Cases
 
@@ -91,15 +96,15 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | --- | --- | --- | --- | --- |
 | TR-01 | Translate valid romanised text | Run Translation Agent. | Modern Malay translation is produced. |  |
 | TR-02 | Hallucinated translation | Mock translation with unsupported added meaning. | Human review or consistency check flags output. |  |
-| TR-03 | Compare to gold standard | Compare translation with reference. | BLEU or human review result is recorded. |  |
+| TR-03 | Human rubric evaluation | Student and supervisor rate a sample for adequacy and fluency (1-5); run `stage_metrics.py rubric`. | Mean and standard deviation per criterion are recorded. No LLM-as-a-judge. |  |
 
 ## Summarisation Test Cases
 
 | ID | Test Case | Steps | Expected Result | Pass/Fail |
 | --- | --- | --- | --- | --- |
 | SUM-01 | Summarise valid translation | Run Summarisation Agent. | Summary and key points are stored. |  |
-| SUM-02 | Summary misses main point | Compare summary with reference or reviewer judgement. | Output is marked for review if incomplete. |  |
-| SUM-03 | ROUGE evaluation | Compare summary with gold-standard summary. | ROUGE result or reviewer note is recorded. |  |
+| SUM-02 | Summary stage fails | Mock summary exception or empty output. | Runtime Fault Handler marks the stage incomplete; knowledge extraction still completes. |  |
+| SUM-03 | ROUGE evaluation | Run `stage_metrics.py summary` against 20-30 human reference summaries. | ROUGE-1/2/L are recorded. |  |
 
 ## Knowledge Extraction Test Cases
 
@@ -108,7 +113,8 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | KE-01 | Extract entities and topics | Run Knowledge Extraction Agent. | JSON includes entities, dates, places, topics, relationships, and confidence. |  |
 | KE-02 | Inconsistent extracted entity | Mock entity not supported by translation/source. | System flags entity for review. |  |
 | KE-03 | Invalid JSON extraction | Return malformed JSON. | Retry and then mark failed/needs_review if unresolved. |  |
-| KE-04 | Compare to annotation | Compare extracted knowledge with gold-standard annotation. | Structured output accuracy is calculated or reviewed. |  |
+| KE-04 | Compare to annotation | Run `stage_metrics.py knowledge` against manually tagged gold entities. | Per-field and micro precision/recall/F1 are recorded. |  |
+| KE-05 | Concurrency | Run summary and knowledge extraction on the same translation. | Both start after translation and run concurrently. |  |
 
 ## Failure/Error Test Cases
 
@@ -119,6 +125,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | ERR-03 | External API unavailable | Retry or use configured fallback; otherwise mark `failed_external_api`. |  |
 | ERR-04 | Supabase write failure | Retry and log failure. |  |
 | ERR-05 | Missing gold standard | Run pipeline but mark metrics unavailable. |  |
+| ERR-07 | Stage timeout or empty output | Runtime Fault Handler logs, passes through last valid output, flags stage incomplete. |  |
 | ERR-06 | Human reviewer correction | Store correction in `validation_reviews` and preserve original output. |  |
 
 ## Usability Test Cases
@@ -135,7 +142,9 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 
 | Area | Acceptance Criteria |
 | --- | --- |
-| OCR | Fine-tuned OCR targets at least 60% character accuracy on confirmed evaluation samples. |
+| OCR | Fine-tuned OCR reaches CER of at most 10% and character accuracy of at least 90% on the held-out test issue. |
+| Romanisation gate | Method A/B agreement is reported per item; items below 85% are flagged for human review. |
+| Evaluation method | Stage metrics use BLEU/chrF, human rubric, ROUGE, and F1 only. LLM-as-a-judge is not used. |
 | OCR benchmark | Fine-tuned OCR, Tesseract, and VLM OCR are compared where configured and references exist. |
 | Agents | All agent stages produce stored outputs with status and confidence/uncertainty where possible. |
 | Gold standard | Manual references are used for OCR and agent evaluation. |

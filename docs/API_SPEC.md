@@ -177,10 +177,10 @@ year=1955
   "ocr_result_id": "33333333-3333-3333-3333-333333333333",
   "status": "running",
   "agent_order": [
-    "Romanisation Agent",
+    "Romanisation Agent (Method A + Method B)",
+    "Inter-Method Agreement Gate",
     "Translation Agent",
-    "Summarisation Agent",
-    "Knowledge Extraction Agent"
+    "Summarisation Agent + Knowledge Extraction Agent (concurrent)"
   ]
 }
 ```
@@ -188,6 +188,42 @@ year=1955
 **Validation rules:** OCR result must exist. Low-confidence OCR requires `allow_low_confidence=true` or human review.
 
 **Errors:** `400`, `404`, `422`, `503`.
+
+### Run Pipeline on Jawi Text (implemented prototype, streaming)
+
+| Item | Detail |
+| --- | --- |
+| Method | `POST` |
+| Route | `/api/pipeline/run` |
+| Purpose | Run the agent pipeline on pasted Jawi text and stream progress as Server-Sent Events. |
+| Success status | `200 OK` (`text/event-stream`) |
+
+**Request example**
+
+```json
+{
+  "jawi_text": "ايبو ڤد ماس دهولو",
+  "model": "google/gemini-2.5-flash"
+}
+```
+
+`model` defaults to `google/gemini-2.5-flash`. Use `"mock"` for offline runs (mock LLM and mock Method A).
+
+**Event stream** (each line is `data: {json}`), in order:
+
+| Event `type` | Key fields |
+| --- | --- |
+| `orchestrator_decision` | `label`, `skip_summary`, `word_count`, `duration` |
+| `agent_start` | `agent` (`romanisation`, `translation`, `summary`, `knowledge`), `label` |
+| `agent_done` | `agent`, `result`, `duration`, `incomplete`, `error`; romanisation also has `method_b_text` |
+| `agreement_gate_done` | `status` (`passed`, `flagged`, `skipped`), `agreement`, `threshold`, `method_b_coverage`, `reason`, `needs_human_review` |
+| `agent_skipped` | `agent`, `reason` (summary skipped for short text) |
+| `pipeline_done` | `total_duration`, `model`, `mode`, `incomplete_stages`, `needs_human_review` |
+| `error` | `message` (unexpected failure outside the stage fault handler) |
+
+`summary` and `knowledge` `agent_done` events arrive in completion order because the two stages run concurrently.
+
+**Errors:** `400` when `jawi_text` is empty.
 
 ### Run Individual Agent
 

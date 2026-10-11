@@ -168,8 +168,11 @@ erDiagram
 | --- | --- | --- | --- |
 | id | uuid | PK | Default generated UUID. |
 | agent_run_id | uuid | FK | References `agent_runs.id`. |
-| romanised_text | text |  | Required. |
-| uncertain_tokens | jsonb |  | Nullable list. |
+| romanised_text | text |  | Required. Method A (neural) output, or the fallback passed to Translation. |
+| method_b_text | text |  | Nullable. Method B (dictionary) output; unknown words appear as `⟦jawi⟧`. |
+| uncertain_tokens | jsonb |  | Nullable list. Method B ambiguous/unknown word log (jawi, status, rule, candidates). |
+| agreement_score | numeric |  | Nullable. Inter-Method Agreement Gate score, 0-1. Null when the gate was skipped. |
+| agreement_status | text |  | `passed`, `flagged`, or `skipped`. |
 | notes | text |  | Nullable. |
 | created_at | timestamptz |  | Default now. |
 

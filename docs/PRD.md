@@ -23,7 +23,7 @@ If OCR is inaccurate, downstream agents may romanise wrongly, translate incorrec
 | ID | Objective |
 | --- | --- |
 | RO1 | Develop a multi-agent framework for Classical Malay Jawi documents that produces structured outputs. |
-| RO2 | Develop and fine-tune a Jawi OCR model targeting at least 60% character accuracy, benchmarked against Tesseract and VLM-based OCR using accuracy and CER. |
+| RO2 | Develop and fine-tune a Jawi OCR model targeting CER of at most 10% and character accuracy of at least 90%, benchmarked against Tesseract and VLM-based OCR using accuracy and CER. |
 | RO3 | Design specialised agents for romanisation, translation, summarisation, and knowledge extraction, evaluated using BLEU, ROUGE, human review, and structured output accuracy where suitable. |
 
 ## Target Users
@@ -97,13 +97,13 @@ If OCR is inaccurate, downstream agents may romanise wrongly, translate incorrec
 
 | Area | Metric | Target / Proposal |
 | --- | --- | --- |
-| OCR | Character accuracy | At least 60% target for the fine-tuned OCR model. |
+| OCR | Character accuracy / CER | Character accuracy at least 90% and CER at most 10% for the fine-tuned OCR model. |
 | OCR | Character Error Rate | Lower CER than baseline Tesseract on selected evaluation samples. |
 | OCR comparison | Benchmark table | Fine-tuned OCR, Tesseract, and VLM-based OCR compared on the same samples where possible. |
-| Romanisation | BLEU / human review | Compare against gold-standard romanisation or reviewer judgement. |
-| Translation | BLEU / human review | Compare against modern Malay reference translation or reviewer judgement. |
-| Summarisation | ROUGE / human review | Compare against reference summary or reviewer judgement. |
-| Knowledge extraction | Structured output accuracy | Check extracted entities, dates, places, topics, and relationships against reference annotations. |
+| Romanisation | BLEU / chrF | Compare against Majalah Qalam romanised PDFs (gold standard). |
+| Translation | Human rubric | Adequacy and fluency (1-5) rated by student and supervisor on a sample. No gold translation exists; no LLM-as-a-judge. |
+| Summarisation | ROUGE | Compare against 20-30 human-written reference summaries. |
+| Knowledge extraction | F1 | Precision/recall/F1 against manually tagged gold entities. |
 | Reliability | Failure handling | Low confidence, invalid JSON, incomplete LLM response, and unavailable API cases handled without data loss. |
 
 ## Gold-Standard Evaluation Overview
@@ -133,9 +133,9 @@ The literature review should not focus only on OCR. It should also cover:
 - Classical Malay/Jawi text processing and the effect of OCR noise on downstream NLP.
 - Evaluation methods for OCR and NLP agents, including CER, BLEU, ROUGE, human review, and structured extraction accuracy.
 
-## Impact of OCR Accuracy Above 60%
+## Impact of OCR Accuracy Above 90%
 
-The 60% character accuracy target is a realistic FYP milestone for improving poor baseline OCR on difficult Jawi scans. Accuracy above 60% does not mean the output is perfect, but it can reduce the number of severe errors passed into downstream agents. Better OCR should improve:
+The 90% character accuracy (CER at most 10%) target is the RO2 goal for improving poor baseline OCR on difficult Jawi scans. Accuracy above 90% does not mean the output is perfect, but it can reduce the number of severe errors passed into downstream agents. Better OCR should improve:
 
 - Romanisation consistency.
 - Translation faithfulness.
@@ -168,5 +168,5 @@ If OCR accuracy remains low, agents may produce fluent but incorrect output. For
 | Literature review should focus more on NLP agent architectures and Malay language processing. | Scope and success metrics explicitly include specialised NLP agents and Malay/Jawi processing. |
 | Define the gold-standard reference used to evaluate the agents. | The gold-standard evaluation overview defines OCR, romanisation, translation, summary, and knowledge extraction references. |
 | State a realistic number of test samples. | The PRD proposes 10-15 pilot samples and 30-50 final evaluation excerpts, with final number to be confirmed. |
-| Explain the impact of OCR accuracy above 60% and downstream effects. | The OCR accuracy section explains how OCR quality affects all downstream agents. |
+| Explain the impact of OCR accuracy above 90% and downstream effects. | The OCR accuracy section explains how OCR quality affects all downstream agents. |
 | Provide clearer agent details including models, coordination, error handling, fallback, retry, and failures. | This PRD defines the requirement; SAD.md and AGENTS.md provide the detailed implementation rules. |
