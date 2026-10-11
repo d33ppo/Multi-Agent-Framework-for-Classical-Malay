@@ -204,6 +204,11 @@ class RomanisationAgentTests(unittest.TestCase):
 
 
 class PipelineStageTests(unittest.TestCase):
+    def setUp(self):
+        sleep = mock.patch("fault_handler._sleep")  # no real backoff wait when an LLM stage is retried
+        sleep.start()
+        self.addCleanup(sleep.stop)
+
     def _events(self, runtime, **kwargs):
         return list(iter_agent_pipeline(
             "ايبو ڤد", runtime, neural=FakeNeural("ibu pada"), dictionary=make_dictionary(), **kwargs
