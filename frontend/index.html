@@ -92,11 +92,11 @@
           <select id="modelSelect"
             class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
             <optgroup label="Anthropic (via OpenRouter)">
-              <option value="anthropic/claude-sonnet-4-6" selected>Claude Sonnet 4.6 (Recommended)</option>
+              <option value="anthropic/claude-sonnet-4-6">Claude Sonnet 4.6</option>
               <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku (faster)</option>
             </optgroup>
             <optgroup label="Google">
-              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="google/gemini-2.5-flash" selected>Gemini 2.5 Flash (Default)</option>
               <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
               <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
             </optgroup>
@@ -169,12 +169,12 @@
           <span class="agent-duration text-xs font-mono text-slate-400 w-12 text-right"></span>
         </div>
 
-        <!-- Quality Gate sub-row (hidden until quality_gate_check fires) -->
+        <!-- Inter-Method Agreement Gate sub-row (hidden until agreement_gate_done fires) -->
         <div id="step-quality-gate" class="hidden agent-row flex items-center gap-3 py-1.5 pl-10 pr-3 rounded-lg bg-slate-50">
           <div class="agent-icon w-4 h-4 flex-shrink-0 flex items-center justify-center">
             <div class="w-3 h-3 rounded-full border-2 border-slate-300"></div>
           </div>
-          <span class="text-xs text-slate-500 flex-1" id="quality-gate-label">Checking quality…</span>
+          <span class="text-xs text-slate-500 flex-1" id="quality-gate-label">Inter-Method Agreement Gate…</span>
           <span id="quality-gate-duration" class="text-xs font-mono text-slate-400 w-12 text-right"></span>
         </div>
 
@@ -357,34 +357,22 @@
       }
     }
 
-    // ── Quality gate ──────────────────────────────────────────────
-    function handleQualityGateCheck() {
+    // ── Inter-Method Agreement Gate ───────────────────────────────
+    function handleAgreementGate(event) {
       const row = document.getElementById('step-quality-gate');
-      row.classList.remove('hidden');
-      row.classList.add('bg-blue-50');
-      row.querySelector('.agent-icon').innerHTML = ICON_RUNNING;
-      document.getElementById('quality-gate-label').textContent = 'Checking romanisation quality…';
-    }
-
-    function handleQualityGateRetry(event) {
-      const row = document.getElementById('step-quality-gate');
-      row.classList.remove('bg-blue-50');
-      row.classList.add('bg-amber-50');
-      row.querySelector('.agent-icon').innerHTML = ICON_WARN;
-      document.getElementById('quality-gate-label').textContent =
-        `Score ${event.score}/100 — below threshold, retrying with enhanced prompt…`;
-    }
-
-    function handleQualityGateDone(event) {
-      const row = document.getElementById('step-quality-gate');
-      row.classList.remove('bg-blue-50', 'bg-amber-50');
-      const passed = event.score >= 70;
+      row.classList.remove('hidden', 'bg-slate-50', 'bg-blue-50', 'bg-amber-50', 'bg-green-50');
+      const passed = event.status === 'passed';
       row.classList.add(passed ? 'bg-green-50' : 'bg-amber-50');
       row.querySelector('.agent-icon').innerHTML = passed ? ICON_DONE : ICON_WARN;
-      const retryNote = event.retried ? ' (after retry)' : '';
-      document.getElementById('quality-gate-label').textContent =
-        `Score ${event.score}/100 — ${passed ? 'passed' : 'marginal'}${retryNote}`;
-      document.getElementById('quality-gate-duration').textContent = event.duration ? `${event.duration}s` : '';
+      let label;
+      if (event.status === 'skipped') {
+        label = 'Agreement gate skipped — a romanisation method failed; needs human review';
+      } else {
+        const pct = (event.agreement * 100).toFixed(1);
+        const cov = event.method_b_coverage != null ? `, dictionary coverage ${(event.method_b_coverage * 100).toFixed(1)}%` : '';
+        label = `Method A/B agreement ${pct}% (≥${Math.round(event.threshold * 100)}% required${cov}) — ${passed ? 'passed' : 'flagged for human review'}`;
+      }
+      document.getElementById('quality-gate-label').textContent = label;
     }
 
     // ── SSE dispatcher ────────────────────────────────────────────
@@ -397,19 +385,22 @@
 
       } else if (event.type === 'agent_done') {
         setAgentStatus(event.agent, 'done', event.duration);
+        if (event.incomplete) {
+          const row = document.getElementById(`step-${event.agent}`);
+          if (row) {
+            row.classList.remove('bg-green-50');
+            row.classList.add('bg-amber-50');
+            row.querySelector('.agent-icon').innerHTML = ICON_WARN;
+            row.title = `Incomplete — passed through last valid output. ${event.error || ''}`;
+          }
+        }
         revealResult(event.agent, event.result);
 
       } else if (event.type === 'agent_skipped') {
         setAgentStatus(event.agent, 'skipped');
 
-      } else if (event.type === 'quality_gate_check') {
-        handleQualityGateCheck();
-
-      } else if (event.type === 'quality_gate_retry') {
-        handleQualityGateRetry(event);
-
-      } else if (event.type === 'quality_gate_done') {
-        handleQualityGateDone(event);
+      } else if (event.type === 'agreement_gate_done') {
+        handleAgreementGate(event);
 
       } else if (event.type === 'pipeline_done') {
         document.getElementById('totalTime').textContent = event.total_duration + 's';
