@@ -38,6 +38,8 @@ OCR_CONFIDENCE_THRESHOLD=0.60
 MAX_UPLOAD_MB=25
 ```
 
+The list above includes variables planned for Supabase, upload limits and the OCR model. The variables the code reads today are listed in `.env.example` at the repository root; copy it to `.env` to start.
+
 `ALLOW_EXTERNAL_MANUSCRIPT_API=false` should be the default. Set it to `true` only if manuscript data is allowed to be sent to configured external OCR/LLM/VLM providers.
 
 ## Romanisation Method B Dictionary
