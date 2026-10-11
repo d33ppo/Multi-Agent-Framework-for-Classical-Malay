@@ -5,8 +5,10 @@ stage metrics. All external models and LLM calls are faked.
 """
 
 import importlib.util
+import os
 import time
 import unittest
+from unittest import mock
 
 from agreement_gate import AGREEMENT_THRESHOLD, character_agreement, run_agreement_gate
 from fault_handler import run_stage
@@ -264,6 +266,10 @@ class PipelineApiTests(unittest.TestCase):
 
         self._original = romanisation_agent.default_dictionary
         romanisation_agent.default_dictionary = make_dictionary
+        # The API only serves mock output when the server runs in demo mode.
+        env = mock.patch.dict(os.environ, {"APP_MODE": "demo_mock"})
+        env.start()
+        self.addCleanup(env.stop)
         self.client = TestClient(app)
 
     def tearDown(self):

@@ -25,7 +25,7 @@ from typing import Any, Iterator
 
 from fault_handler import StageOutcome, run_stage
 from knowledge_agent import run_knowledge_agent
-from llm_text_runtime import LLMTextRuntime
+from llm_text_runtime import LLMTextRuntime, live_config_problem
 from ocr_input_adapter import load_ocr_input
 from pipeline_types import PipelineResult
 from result_exporter import export_pipeline_run
@@ -210,6 +210,11 @@ def main() -> None:
 
     if sys.platform == "win32":
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+    if args.provider != "mock":
+        problem = live_config_problem()
+        if problem:
+            print(f"Running the agents in MOCK mode: {problem}")
 
     artifacts = run_pipeline(
         args.input_path,

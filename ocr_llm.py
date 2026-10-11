@@ -11,9 +11,13 @@ for easy comparison.
 Usage:
     python ocr_llm.py data/input/jawi_image_data/1950_07_002_3.png data/output/jawi_text_llm_&_tesseract/vlm_1950_07_002_3.txt
 
+This module uploads the manuscript page image to an external service, so it is
+off by default. It only runs when ALLOW_EXTERNAL_MANUSCRIPT_API=true.
+
 Configure via .env:
-    OPENROUTER_API_KEY      — required
-    OPENROUTER_VISION_MODEL — model ID (default: google/gemini-2.5-flash-preview)
+    ALLOW_EXTERNAL_MANUSCRIPT_API: must be true, otherwise nothing is sent
+    OPENROUTER_API_KEY: required
+    OPENROUTER_VISION_MODEL: model ID (default: google/gemini-2.5-flash)
 """
 
 import os
@@ -27,6 +31,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from llm_text_runtime import LLMNotConfiguredError, env_value, external_api_allowed
 from ocr_jawi import compute_cer
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -52,6 +57,11 @@ Begin transcription:
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_VISION_MODEL = "google/gemini-2.5-flash"
+
+
+def vision_model() -> str:
+    """Vision model ID from OPENROUTER_VISION_MODEL, or the default when unset or empty."""
+    return env_value("OPENROUTER_VISION_MODEL", DEFAULT_VISION_MODEL)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -101,13 +111,20 @@ def _extract_openrouter(image_path: str) -> dict:
     """Extract Jawi text using a vision-capable model via OpenRouter."""
     import requests
 
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    # Checked before the image is read: page images never leave the machine by default.
+    if not external_api_allowed():
+        raise LLMNotConfiguredError(
+            "LLM OCR sends the manuscript page image to OpenRouter and is disabled by default. "
+            "Set ALLOW_EXTERNAL_MANUSCRIPT_API=true in your .env file to allow it."
+        )
+
+    api_key = env_value("OPENROUTER_API_KEY")
     if not api_key:
-        raise EnvironmentError(
+        raise LLMNotConfiguredError(
             "OPENROUTER_API_KEY not set. Add it to your .env file."
         )
 
-    model_name = os.environ.get("OPENROUTER_VISION_MODEL", DEFAULT_VISION_MODEL)
+    model_name = vision_model()
     b64_data, media_type = _encode_image(image_path)
 
     headers = {
@@ -237,9 +254,12 @@ def main():
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
     print(f"Processing : {image_path}")
-    print(f"Model      : {os.environ.get('OPENROUTER_VISION_MODEL', DEFAULT_VISION_MODEL)}")
+    print(f"Model      : {vision_model()}")
 
-    result = extract_jawi_text_llm(image_path)
+    try:
+        result = extract_jawi_text_llm(image_path)
+    except LLMNotConfiguredError as exc:
+        sys.exit(f"Not run: {exc}")
 
     print(f"\n=== Extracted Jawi Text ===")
     print(result["raw_text"])
