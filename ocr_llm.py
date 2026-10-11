@@ -227,8 +227,8 @@ def save_output(result: dict, output_path: str, cer_results: dict | None = None)
 
 
 def main():
-    image_path = sys.argv[1] if len(sys.argv) > 1 else "data/input/jawi_image_data/1950_07_002_4.png"
-    output_path = sys.argv[2] if len(sys.argv) > 2 else "data/output/jawi_text_llm_&_tesseract/vlm_1950_07_002_4.txt"
+    image_path = sys.argv[1] if len(sys.argv) > 1 else "data/input/jawi_image_data/1950_07_002_1.png"
+    output_path = sys.argv[2] if len(sys.argv) > 2 else "data/output/jawi_text_llm_&_tesseract/vlm_1950_07_002_1.txt"
 
     # Derive ground truth path from input filename, e.g. 1950_07_002_3.png -> 1950_07_002_3.txt
     input_base = os.path.splitext(os.path.basename(image_path))[0]
