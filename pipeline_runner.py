@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from fault_handler import StageOutcome, run_stage
-from knowledge_agent import run_knowledge_agent
+from knowledge_agent import KnowledgeValidationError, run_knowledge_agent
 from llm_text_runtime import LLMNotConfiguredError, LLMTextRuntime, live_config_problem
 from ocr_input_adapter import load_ocr_input
 from pipeline_types import PipelineResult
@@ -44,8 +44,8 @@ PIPELINE_VERSION = "v0.2-agreement-gate"
 
 # The three LLM stages call an external API, so a failed call is retried. Local romanisation is not.
 LLM_STAGE_MAX_RETRIES = 2
-# Failures a retry cannot fix.
-LLM_NO_RETRY_ON = (LLMNotConfiguredError,)
+# Failures a retry cannot fix. Knowledge extraction already made its one repair call.
+LLM_NO_RETRY_ON = (LLMNotConfiguredError, KnowledgeValidationError)
 LLM_STAGE_RETRY = {"max_retries": LLM_STAGE_MAX_RETRIES, "no_retry_on": LLM_NO_RETRY_ON}
 
 
