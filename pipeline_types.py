@@ -32,6 +32,10 @@ class PipelineResult:
     modern_malay_translation: str
     summary: str
     knowledge_extraction: dict[str, Any]
+    romanisation_method_b: str = ""
+    agreement_gate: dict[str, Any] = field(default_factory=dict)
+    stage_status: dict[str, Any] = field(default_factory=dict)
+    needs_human_review: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

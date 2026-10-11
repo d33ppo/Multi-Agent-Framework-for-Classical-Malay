@@ -32,9 +32,16 @@ def export_pipeline_run(
     translation_path = run_dir / "03_modern_malay_translation.txt"
     summary_path = run_dir / "04_summary.txt"
     knowledge_path = run_dir / "05_knowledge_extraction.json"
+    method_b_path = run_dir / "02b_romanized_method_b.txt"
+    cases_path = run_dir / "02c_method_b_cases.json"
 
     jawi_path.write_text(result.ocr_jawi_text, encoding="utf-8")
     romanized_path.write_text(result.romanized_text, encoding="utf-8")
+    method_b_path.write_text(result.romanisation_method_b, encoding="utf-8")
+    cases_path.write_text(
+        json.dumps(result.metadata.get("method_b_cases", []), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
     translation_path.write_text(result.modern_malay_translation, encoding="utf-8")
     summary_path.write_text(result.summary, encoding="utf-8")
     knowledge_path.write_text(
@@ -69,10 +76,24 @@ def _build_markdown_report(ocr_input: OCRInputRecord, result: PipelineResult) ->
             result.ocr_jawi_text,
             "```",
             "",
-            "## Romanised Classical Malay",
+            f"**Needs human review:** `{result.needs_human_review}`",
+            "",
+            "## Romanised Classical Malay (Method A, neural)",
             "",
             "```text",
             result.romanized_text,
+            "```",
+            "",
+            "## Romanised Classical Malay (Method B, dictionary)",
+            "",
+            "```text",
+            result.romanisation_method_b,
+            "```",
+            "",
+            "## Inter-Method Agreement Gate",
+            "",
+            "```json",
+            json.dumps(result.agreement_gate, indent=2, ensure_ascii=False),
             "```",
             "",
             "## Modern Malay Translation",
@@ -89,6 +110,12 @@ def _build_markdown_report(ocr_input: OCRInputRecord, result: PipelineResult) ->
             "",
             "```json",
             json.dumps(result.knowledge_extraction, indent=2, ensure_ascii=False),
+            "```",
+            "",
+            "## Stage Status (Runtime Fault Handler)",
+            "",
+            "```json",
+            json.dumps(result.stage_status, indent=2, ensure_ascii=False),
             "```",
             "",
             "## Metadata",
