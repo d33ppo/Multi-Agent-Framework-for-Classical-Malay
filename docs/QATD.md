@@ -65,6 +65,10 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | OCR-05 | Failed OCR extraction | Use unreadable image. | System returns clear failure and does not create false completed output. |  |
 | OCR-06 | Benchmark with gold standard | Run OCR where manual transcription exists. | Accuracy and CER are calculated. |  |
 | OCR-07 | Compare OCR providers | Run fine-tuned OCR, Tesseract, and VLM OCR where configured. | Benchmark table is generated with comparable metrics. |  |
+| OCR-08 | Render a multi-page PDF | Upload or render a PDF with N pages. | N page images are produced in page order; the DPI setting controls their pixel size. |  |
+| OCR-09 | OCR provider output | Run the fixture provider, and the Tesseract provider with Tesseract mocked. | Each page returns lines of `{box, text, confidence}`. Fixture lines have no box or confidence. |  |
+| OCR-10 | Original OCR output is preserved | Finish a run, then try to write its stored OCR text again. | The stored text equals the provider output and the second write is refused. |  |
+| OCR-11 | One page fails OCR | Run a two-page article where page 2 has no OCR result. | Page 1 text is used, the OCR stage is marked incomplete, and the run ends as `needs_review`. |  |
 
 ## Agent Pipeline Test Cases
 
@@ -76,6 +80,10 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | AG-04 | Invalid agent JSON output | Mock invalid JSON from Knowledge Extraction Agent. | System makes one JSON repair call. If the output is still invalid, the stage is marked incomplete and no further LLM call is made. |  |
 | AG-05 | Failed LLM/API call | Mock an LLM stage that raises. | Stage is retried up to 2 times with backoff. It completes if a later attempt succeeds; otherwise the last valid output is passed through and the stage is marked incomplete. `attempts` is recorded. |  |
 | AG-07 | Retry scope | Mock empty output from an LLM stage, and a failing romanisation method. | Neither is retried: each is called once. |  |
+| AG-08 | Uploaded article runs to completion | Upload a two-page PDF with the fixture OCR provider and a mocked LLM. | Run status becomes `completed`, all seven stages are `completed`, outputs are returned by `GET /api/runs/{id}`, and the event stream ends with `pipeline_done`. |  |
+| AG-09 | A stage fails during an uploaded run | Mock a failing translation call. | The run still finishes. Status is `needs_review`, `incomplete_stages` lists `translation`, and summary and knowledge extraction complete. |  |
+| AG-10 | No OCR text | Upload a document for which OCR returns nothing. | Agent stages are `skipped`, no LLM call is made, and the run ends as `failed` with the cause. |  |
+| AG-11 | Run survives a restart | Read a finished run from a new job runner; read a run saved as `running`. | The finished run is returned unchanged. The interrupted run is reported as `failed`. |  |
 | AG-06 | Agent contradiction | Mock translation contradicting source meaning. | System flags contradiction for human review. |  |
 
 ## Romanisation Test Cases
@@ -122,8 +130,10 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 
 | ID | Failure | Expected Handling | Pass/Fail |
 | --- | --- | --- | --- |
-| ERR-01 | Unsupported file type | Return `400` and do not store invalid file. |  |
-| ERR-02 | Unreadable manuscript image | Return `422`, log error, and request better sample/manual review. |  |
+| ERR-01 | Unsupported file type | Return `400` and do not store invalid file. The type is read from the file content, so a wrong file name does not matter. |  |
+| ERR-02 | Unreadable manuscript image | Return `422`, log error, and request better sample/manual review. A damaged or password-protected upload is rejected with `422` and not stored. |  |
+| ERR-12 | Upload over `MAX_UPLOAD_MB` or `MAX_UPLOAD_PAGES` | Return `413` and store nothing. |  |
+| ERR-13 | Unknown run id | `GET /api/runs/{id}` and its event stream return `404`. |  |
 | ERR-03 | External API unavailable | Retry up to 2 times with backoff; otherwise pass the last valid output through and mark the stage incomplete. |  |
 | ERR-04 | Supabase write failure | Retry and log failure. |  |
 | ERR-05 | Missing gold standard | Run pipeline but mark metrics unavailable. |  |
