@@ -21,6 +21,13 @@ load_dotenv(os.path.join(PROJECT_DIR, ".env"))
 # Use local tessdata directory (contains ara.traineddata)
 TESSDATA_DIR = os.path.join(PROJECT_DIR, "tessdata")
 
+# Tesseract config:
+# -l ara         -> Arabic language (covers Jawi script)
+# --oem 1        -> LSTM neural net engine
+# --psm 6        -> Assume a single uniform block of text
+# -c preserve_interword_spaces=1 -> keep spacing for RTL text
+TESSERACT_CONFIG = "-l ara --oem 1 --psm 6 -c preserve_interword_spaces=1"
+
 
 def resolve_tesseract_cmd() -> str:
     """Tesseract executable: TESSERACT_CMD from the environment, otherwise the one on PATH."""
@@ -49,7 +56,11 @@ def preprocess_image(image_path: str) -> np.ndarray:
         # Try with PIL for GIF and other formats
         pil_img = Image.open(image_path).convert("RGB")
         img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    return _preprocess_array(img)
 
+
+def _preprocess_array(img: np.ndarray) -> np.ndarray:
+    """Apply the preprocessing steps to an image that is already loaded (BGR)."""
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -113,12 +124,7 @@ def extract_jawi_text(image_path: str) -> dict:
     # Set TESSDATA_PREFIX so Tesseract finds ara.traineddata from our local tessdata dir
     os.environ["TESSDATA_PREFIX"] = TESSDATA_DIR
 
-    # Tesseract config:
-    # -l ara         -> Arabic language (covers Jawi script)
-    # --oem 1        -> LSTM neural net engine
-    # --psm 6        -> Assume a single uniform block of text
-    # -c preserve_interword_spaces=1 -> keep spacing for RTL text
-    custom_config = "-l ara --oem 1 --psm 6 -c preserve_interword_spaces=1"
+    custom_config = TESSERACT_CONFIG
 
     # Run OCR and get detailed output for confidence
     data = pytesseract.image_to_data(
@@ -140,6 +146,52 @@ def extract_jawi_text(image_path: str) -> dict:
         "processing_time": round(processing_time, 3),
         "language": "ara (Jawi)",
     }
+
+
+def extract_jawi_lines(image_bytes: bytes) -> list[dict]:
+    """
+    OCR one page image held in memory and return its text lines in reading order.
+
+    Each line is {"text", "box", "confidence"}. The box is (left, top, width, height)
+    in pixels of the preprocessed page, and the confidence is between 0 and 1.
+    """
+    img = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Page image could not be decoded.")
+
+    pytesseract.pytesseract.tesseract_cmd = resolve_tesseract_cmd()
+    os.environ["TESSDATA_PREFIX"] = TESSDATA_DIR
+    data = pytesseract.image_to_data(
+        _preprocess_array(img), config=TESSERACT_CONFIG, output_type=pytesseract.Output.DICT
+    )
+    return group_words_into_lines(data)
+
+
+def group_words_into_lines(data: dict) -> list[dict]:
+    """Group Tesseract word rows into lines. Rows with no text or confidence -1 are layout rows."""
+    lines: dict[tuple, dict] = {}
+    for i, word in enumerate(data["text"]):
+        confidence = float(data["conf"][i])
+        if not word.strip() or confidence < 0:
+            continue
+        left, top = data["left"][i], data["top"][i]
+        right, bottom = left + data["width"][i], top + data["height"][i]
+        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+        line = lines.setdefault(key, {"words": [], "confidences": [], "edges": [left, top, right, bottom]})
+        line["words"].append(word.strip())
+        line["confidences"].append(confidence)
+        edges = line["edges"]
+        line["edges"] = [min(edges[0], left), min(edges[1], top), max(edges[2], right), max(edges[3], bottom)]
+
+    return [
+        {
+            "text": " ".join(line["words"]),
+            "box": (line["edges"][0], line["edges"][1],
+                    line["edges"][2] - line["edges"][0], line["edges"][3] - line["edges"][1]),
+            "confidence": round(sum(line["confidences"]) / len(line["confidences"]) / 100, 4),
+        }
+        for line in lines.values()
+    ]
 
 
 def _levenshtein(s1: str, s2: str) -> int:
