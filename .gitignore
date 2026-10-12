@@ -5,6 +5,7 @@
 # Local data, generated outputs and temp files
 data/
 output/
+storage/
 runs/
 _to_delete/
 
