@@ -6,8 +6,12 @@ network.
 
 import json
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
+
+import pymupdf
 
 from jawi_dictionary import JawiRumiDictionary
 
@@ -93,3 +97,29 @@ class EnvTestCase(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         return replacement
+
+
+class TempDirTestCase(EnvTestCase):
+    """Adds `self.tmp`, a folder that is removed after the test."""
+
+    def setUp(self):
+        super().setUp()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.tmp = Path(folder.name)
+
+
+def make_pdf(pages=3):
+    """A small PDF with the given number of pages (200 x 100 points each)."""
+    document = pymupdf.open()
+    for number in range(1, pages + 1):
+        page = document.new_page(width=200, height=100)
+        page.insert_text((20, 50), f"page {number}")
+    return document.tobytes()
+
+
+def make_image(image_format="png"):
+    """A small blank image, 40 x 20 pixels."""
+    pixmap = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 40, 20), False)
+    pixmap.clear_with(255)
+    return pixmap.tobytes(image_format)

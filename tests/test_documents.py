@@ -5,9 +5,7 @@ Tesseract is mocked.
 """
 
 import os
-import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import pymupdf
@@ -22,34 +20,12 @@ from ocr_providers import (
     safe_document_name,
 )
 from pdf_render import UnreadableDocumentError, count_pages, detect_file_type, iter_page_pngs, render_dpi
-from tests.support import EnvTestCase
+from tests.support import EnvTestCase, TempDirTestCase, make_image, make_pdf
 
 try:
     import ocr_jawi
 except ImportError:  # OCR extras (pytesseract, opencv) not installed
     ocr_jawi = None
-
-
-def make_pdf(pages=3):
-    document = pymupdf.open()
-    for number in range(1, pages + 1):
-        page = document.new_page(width=200, height=100)
-        page.insert_text((20, 50), f"page {number}")
-    return document.tobytes()
-
-
-def make_image(image_format="png"):
-    pixmap = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 40, 20), False)
-    pixmap.clear_with(255)
-    return pixmap.tobytes(image_format)
-
-
-class TempDirTestCase(EnvTestCase):
-    def setUp(self):
-        super().setUp()
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        self.tmp = Path(folder.name)
 
 
 class StorageTests(TempDirTestCase):

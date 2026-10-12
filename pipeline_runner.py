@@ -48,6 +48,19 @@ LLM_STAGE_MAX_RETRIES = 2
 LLM_NO_RETRY_ON = (LLMNotConfiguredError, KnowledgeValidationError)
 LLM_STAGE_RETRY = {"max_retries": LLM_STAGE_MAX_RETRIES, "no_retry_on": LLM_NO_RETRY_ON}
 
+SHORT_TEXT_THRESHOLD = 10  # words — below this, summary is skipped
+
+
+def plan_agents(jawi_text: str) -> dict[str, Any]:
+    """Inspect input and decide which agents to run. Shared by the text endpoint and upload runs."""
+    word_count = len(jawi_text.split())
+    skip_summary = word_count < SHORT_TEXT_THRESHOLD
+    if skip_summary:
+        label = f"Short snippet ({word_count} words) — skipping summary agent"
+    else:
+        label = f"Full article ({word_count} words) — running all 4 agents"
+    return {"label": label, "skip_summary": skip_summary, "word_count": word_count}
+
 
 def iter_agent_pipeline(
     jawi_text: str,

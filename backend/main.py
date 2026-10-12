@@ -10,18 +10,22 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.datastructures import Headers
 
+from document_storage import LocalStorage
+from job_runner import JobRunner, Run
 from llm_text_runtime import (
     LLMNotConfiguredError,
     LLMTextRuntime,
@@ -31,10 +35,17 @@ from llm_text_runtime import (
     demo_mock_enabled,
     env_value,
 )
-from pipeline_runner import iter_agent_pipeline
+from ocr_providers import build_ocr_provider
+from pdf_render import UnreadableDocumentError, count_pages, detect_file_type
+from pipeline_runner import iter_agent_pipeline, plan_agents
 
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://localhost:8000"
 DEFAULT_MAX_TEXT_CHARS = 50000
+DEFAULT_MAX_UPLOAD_MB = 25
+DEFAULT_MAX_UPLOAD_PAGES = 30
+UPLOAD_FORM_OVERHEAD_BYTES = 64 * 1024  # multipart boundaries and the other form fields
+UPLOAD_ROUTE = "/api/documents"
+SSE_KEEPALIVE_SECONDS = 15
 MOCK_MODEL = "mock"
 
 
@@ -48,8 +59,38 @@ def max_text_chars() -> int:
     return _get_int_env("MAX_TEXT_CHARS") or DEFAULT_MAX_TEXT_CHARS
 
 
+def max_upload_bytes() -> int:
+    return (_get_int_env("MAX_UPLOAD_MB") or DEFAULT_MAX_UPLOAD_MB) * 1024 * 1024
+
+
+def max_upload_pages() -> int:
+    return _get_int_env("MAX_UPLOAD_PAGES") or DEFAULT_MAX_UPLOAD_PAGES
+
+
+def _file_too_large() -> str:
+    return f"File is too large. The limit is {max_upload_bytes() // (1024 * 1024)} MB."
+
+
+class UploadSizeLimit:
+    """Reject an oversized upload from its Content-Length header, before the body is read."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == UPLOAD_ROUTE:
+            length = Headers(scope=scope).get("content-length", "")
+            if length.isdigit() and int(length) > max_upload_bytes() + UPLOAD_FORM_OVERHEAD_BYTES:
+                response = JSONResponse({"detail": _file_too_large()}, status_code=413)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 app = FastAPI(title="Classical Malay Pipeline API", version="0.1.0")
 
+# The last middleware added runs first, so CORS headers are also set on the 413 above.
+app.add_middleware(UploadSizeLimit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins(),
@@ -57,7 +98,17 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-SHORT_TEXT_THRESHOLD = 10  # words — below this, summary is skipped
+_job_runner: JobRunner | None = None
+_job_runner_lock = threading.Lock()
+
+
+def get_job_runner() -> JobRunner:
+    """The one job runner of this process, created on first use."""
+    global _job_runner
+    with _job_runner_lock:
+        if _job_runner is None:
+            _job_runner = JobRunner(LocalStorage())
+        return _job_runner
 
 
 class PipelineRequest(BaseModel):
@@ -105,15 +156,11 @@ def _build_runtime(model: str) -> LLMTextRuntime:
         raise HTTPException(status_code=503, detail=f"LLM provider is not available: {exc}") from exc
 
 
-def _orchestrate(jawi_text: str) -> dict:
-    """Inspect input and decide which agents to run."""
-    word_count = len(jawi_text.split())
-    skip_summary = word_count < SHORT_TEXT_THRESHOLD
-    if skip_summary:
-        label = f"Short snippet ({word_count} words) — skipping summary agent"
-    else:
-        label = f"Full article ({word_count} words) — running all 4 agents"
-    return {"label": label, "skip_summary": skip_summary, "word_count": word_count}
+def _get_run(run_id: str) -> Run:
+    run = get_job_runner().get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    return run
 
 
 @app.get("/api/health")
@@ -152,7 +199,7 @@ def run_pipeline(request: PipelineRequest) -> StreamingResponse:
             started = time.time()
 
             # ── Orchestrator ──────────────────────────────────────
-            routing = _orchestrate(jawi_text)
+            routing = plan_agents(jawi_text)
             yield _sse({
                 "type":         "orchestrator_decision",
                 "label":        routing["label"],
@@ -180,6 +227,80 @@ def run_pipeline(request: PipelineRequest) -> StreamingResponse:
 
         except Exception as exc:
             yield _sse({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post(UPLOAD_ROUTE, status_code=202)
+def upload_document(file: UploadFile = File(...), model: str | None = Form(None)) -> dict:
+    """Store one article (PDF, PNG or JPEG) and start its pipeline run in the background."""
+    limit = max_upload_bytes()
+    data = file.file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(status_code=413, detail=_file_too_large())
+
+    file_type = detect_file_type(data)  # from the content, not the file name or Content-Type
+    if file_type is None:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Upload a PDF, PNG or JPEG file.")
+    try:
+        page_count = count_pages(data, file_type)
+    except UnreadableDocumentError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    page_limit = max_upload_pages()
+    if page_count > page_limit:
+        raise HTTPException(
+            status_code=413, detail=f"The document has {page_count} pages. The limit is {page_limit}."
+        )
+
+    # Same model and key checks as the text endpoint, before anything is stored.
+    runtime = _build_runtime(_resolve_model(model))
+    try:
+        provider = build_ocr_provider()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"OCR is not available: {exc}") from exc
+
+    run = get_job_runner().submit(
+        data=data, file_name=file.filename, file_type=file_type, page_count=page_count,
+        runtime=runtime, provider=provider,
+    )
+    record = run.to_dict()
+    return {
+        "document_id": record["document_id"],
+        "run_id": record["run_id"],
+        "status": record["status"],
+        "file_type": file_type,
+        "page_count": page_count,
+        "status_url": f"/api/runs/{record['run_id']}",
+        "events_url": f"/api/runs/{record['run_id']}/events",
+    }
+
+
+@app.get("/api/runs/{run_id}")
+def get_run(run_id: str) -> dict:
+    """Status, stage statuses and outputs of one run."""
+    return _get_run(run_id).to_dict()
+
+
+@app.get("/api/runs/{run_id}/events")
+def stream_run_events(run_id: str) -> StreamingResponse:
+    """Replay the run's stage events from the start, then follow it until it finishes."""
+    run = _get_run(run_id)
+
+    def generate():
+        index = 0
+        while True:
+            events, finished = run.events_since(index, timeout=SSE_KEEPALIVE_SECONDS)
+            for event in events:
+                yield _sse(event)
+            index += len(events)
+            if finished:
+                break
+            if not events:
+                yield ": keep-alive\n\n"
 
     return StreamingResponse(
         generate(),
