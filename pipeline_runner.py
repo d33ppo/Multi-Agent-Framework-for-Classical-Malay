@@ -8,6 +8,9 @@ Flow:
         -> Summarisation and Knowledge Extraction (concurrently)
 Every stage is wrapped by the Runtime Fault Handler (fault_handler.run_stage).
 
+Romanisation and the gate are plain Python. Translation, Summarisation and
+Knowledge Extraction are one LangChain runnable chain (build_llm_chain).
+
 Usage examples:
     python pipeline_runner.py data/input/pipeline_inputs/good_qwen_sample.txt --provider mock
     python pipeline_runner.py data/ground_truth/1950_07_002_1.txt
@@ -19,9 +22,10 @@ import argparse
 import io
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Iterator
+
+from langchain_core.runnables import Runnable, RunnableAssign, RunnableLambda, RunnableParallel, RunnablePassthrough
 
 from fault_handler import StageOutcome, run_stage
 from knowledge_agent import KnowledgeValidationError, run_knowledge_agent
@@ -50,6 +54,12 @@ LLM_STAGE_RETRY = {"max_retries": LLM_STAGE_MAX_RETRIES, "no_retry_on": LLM_NO_R
 
 SHORT_TEXT_THRESHOLD = 10  # words — below this, summary is skipped
 
+AGENT_LABELS = {
+    "translation": "Translation Agent",
+    "knowledge": "Knowledge Extraction",
+    "summary": "Summary Agent",
+}
+
 
 def plan_agents(jawi_text: str) -> dict[str, Any]:
     """Inspect input and decide which agents to run. Shared by the text endpoint and upload runs."""
@@ -60,6 +70,43 @@ def plan_agents(jawi_text: str) -> dict[str, Any]:
     else:
         label = f"Full article ({word_count} words) — running all 4 agents"
     return {"label": label, "skip_summary": skip_summary, "word_count": word_count}
+
+
+def build_llm_chain(runtime: LLMTextRuntime, *, skip_summary: bool = False) -> Runnable:
+    """
+    Translation -> (Knowledge Extraction || Summarisation) as one LangChain runnable chain.
+
+    The chain takes {"romanised": text} and adds one key per stage, each holding the
+    StageOutcome of that stage. Every step goes through the Runtime Fault Handler, which
+    also does the retries, so a step never raises: a failed stage passes its fallback on.
+    """
+
+    def translate(state: dict) -> StageOutcome:
+        # Falls back to the romanised text.
+        return run_stage(
+            "translation", run_translation_agent, state["romanised"], runtime,
+            fallback=state["romanised"], **LLM_STAGE_RETRY,
+        )
+
+    def extract_knowledge(state: dict) -> StageOutcome:
+        return run_stage(
+            "knowledge", run_knowledge_agent, state["translation"].output.strip(), runtime,
+            fallback={}, **LLM_STAGE_RETRY,
+        )
+
+    def summarise(state: dict) -> StageOutcome:
+        return run_stage(
+            "summary", run_summary_agent, state["translation"].output.strip(), runtime,
+            fallback="", **LLM_STAGE_RETRY,
+        )
+
+    concurrent = {"knowledge": RunnableLambda(extract_knowledge)}
+    if not skip_summary:
+        concurrent["summary"] = RunnableLambda(summarise)
+
+    return RunnablePassthrough.assign(translation=RunnableLambda(translate)) | RunnableAssign(
+        RunnableParallel(concurrent)
+    )
 
 
 def iter_agent_pipeline(
@@ -96,46 +143,30 @@ def iter_agent_pipeline(
     yield {"type": "agreement_gate_done", **romanisation.to_dict()["agreement_gate"],
            "needs_human_review": romanisation.needs_human_review}
 
-    # SubAgent 2: Translation (falls back to the romanised text)
-    yield {"type": "agent_start", "agent": "translation", "label": "Translation Agent"}
-    translation = run_stage(
-        "translation", run_translation_agent, romanisation.text, runtime,
-        fallback=romanisation.text, **LLM_STAGE_RETRY,
-    )
-    stages["translation"] = translation
-    translation_text = translation.output.strip()
-    yield _done_event("translation", "Translation Agent", translation, translation_text)
-
-    # SubAgents 3 + 4: Summarisation and Knowledge Extraction run concurrently on the translation
-    jobs = {"knowledge": ("Knowledge Extraction", run_knowledge_agent, {})}
-    if skip_summary:
-        yield {"type": "agent_skipped", "agent": "summary", "label": "Summary Agent",
-               "reason": "Short text — skipped by orchestrator"}
-    else:
-        jobs["summary"] = ("Summary Agent", run_summary_agent, "")
-
-    for agent, (label, _, _) in jobs.items():
-        yield {"type": "agent_start", "agent": agent, "label": label}
-
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-        futures = {
-            pool.submit(
-                run_stage, agent, func, translation_text, runtime, fallback=fallback, **LLM_STAGE_RETRY
-            ): (agent, label)
-            for agent, (label, func, fallback) in jobs.items()
-        }
-        for future in as_completed(futures):
-            agent, label = futures[future]
-            outcome = future.result()
+    # SubAgents 2 to 4 are one LangChain chain: Translation, then Summarisation and Knowledge
+    # Extraction concurrently on the translation. Streaming it hands over each stage as it finishes.
+    chain = build_llm_chain(runtime, skip_summary=skip_summary)
+    yield {"type": "agent_start", "agent": "translation", "label": AGENT_LABELS["translation"]}
+    for chunk in chain.stream({"romanised": romanisation.text}):
+        for agent, outcome in chunk.items():
+            if agent not in AGENT_LABELS:
+                continue  # the chain input, passed through
             stages[agent] = outcome
             result = outcome.output.strip() if isinstance(outcome.output, str) else outcome.output
-            yield _done_event(agent, label, outcome, result)
+            yield _done_event(agent, AGENT_LABELS[agent], outcome, result)
+
+            if agent == "translation":
+                if skip_summary:
+                    yield {"type": "agent_skipped", "agent": "summary", "label": AGENT_LABELS["summary"],
+                           "reason": "Short text — skipped by orchestrator"}
+                for started in ("knowledge",) if skip_summary else ("knowledge", "summary"):
+                    yield {"type": "agent_start", "agent": started, "label": AGENT_LABELS[started]}
 
     summary = stages["summary"].output.strip() if "summary" in stages else ""
     yield {
         "type": "pipeline_result",
         "romanisation": romanisation.to_dict(),
-        "translation": translation_text,
+        "translation": stages["translation"].output.strip(),
         "summary": summary,
         "knowledge": stages["knowledge"].output,
         "stage_status": {name: outcome.to_dict() for name, outcome in stages.items()},
