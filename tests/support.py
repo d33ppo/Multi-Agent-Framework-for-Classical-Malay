@@ -2,6 +2,11 @@
 Shared test helpers: a clean configuration for every test, and fakes that
 stand in for OpenRouter and the romanisation models. Nothing here touches the
 network.
+
+The agents call OpenRouter through LangChain's ChatOpenAI, which sends with
+httpx. The VLM OCR baseline sends with requests. Both are replaced by the same
+fake, `self.post`, so the real LangChain and OpenAI SDK code runs in tests and
+only the HTTP request is faked.
 """
 
 import json
@@ -11,6 +16,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import httpx
 import pymupdf
 
 from jawi_dictionary import JawiRumiDictionary
@@ -35,6 +41,8 @@ CONTROLLED_ENV = (
     "OCR_FIXTURE_DIR",
     "STORAGE_DIR",
     "JOB_WORKERS",
+    "LANGSMITH_TRACING",  # LangChain tracing would upload chain inputs, so it is always off in tests
+    "LANGCHAIN_TRACING_V2",
 )
 LIVE = {"OPENROUTER_API_KEY": "test-key-not-real", "ALLOW_EXTERNAL_MANUSCRIPT_API": "true"}
 KNOWLEDGE_JSON = json.dumps(
@@ -50,7 +58,8 @@ class FakeResponse:
         self.status_code = status_code
 
     def json(self):
-        return {"model": "fake", "choices": [{"finish_reason": "stop", "message": {"content": self.text}}]}
+        message = {"role": "assistant", "content": self.text}
+        return {"model": "fake", "choices": [{"index": 0, "finish_reason": "stop", "message": message}]}
 
 
 def fake_openrouter(_url, **kwargs):
@@ -61,6 +70,21 @@ def fake_openrouter(_url, **kwargs):
     if "summarise" in system_prompt:
         return FakeResponse("Ringkasan ujian.")
     return FakeResponse(KNOWLEDGE_JSON)
+
+
+def send_through(post):
+    """A replacement for httpx.Client.send that hands each outbound request to `post`."""
+    real_send = httpx.Client.send
+
+    def send(client, request, **kwargs):
+        if request.url.host == "testserver":  # FastAPI's TestClient, which never leaves the process
+            return real_send(client, request, **kwargs)
+        fake = post(str(request.url), headers=dict(request.headers), json=json.loads(request.content))
+        if fake.status_code != 200:
+            return httpx.Response(fake.status_code, text=fake.text, request=request)
+        return httpx.Response(200, json=fake.json(), request=request)
+
+    return send
 
 
 def make_dictionary():
@@ -87,6 +111,7 @@ class EnvTestCase(unittest.TestCase):
         post = mock.patch("requests.post", side_effect=AssertionError("unexpected network call"))
         self.post = post.start()
         self.addCleanup(post.stop)
+        self.patch("httpx.Client.send", send_through(self.post))
 
     def answer_with(self, responder):
         self.post.side_effect = responder

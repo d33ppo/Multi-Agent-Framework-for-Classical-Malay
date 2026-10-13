@@ -3,8 +3,8 @@ Tests for the API and configuration hardening: no silent mock output, the
 external-API switch, the model allowlist, CORS origins, the text size limit,
 and the OCR script settings.
 
-Nothing here touches the network. `requests.post` is replaced in every test,
-and each test starts from a clean set of configuration variables so a real
+Nothing here touches the network. Outbound HTTP is replaced in every test
+(see tests/support.py), and each test starts from a clean set of configuration variables so a real
 .env on the developer machine cannot leak in.
 """
 
