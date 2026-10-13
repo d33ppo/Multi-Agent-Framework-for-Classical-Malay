@@ -96,16 +96,16 @@ Method A and Method B run in parallel on the same OCR text. Translation must fin
 | Romanisation Method B | Reverse-lookup dictionary built from `mesolitica/jawi-ms-en` (`wikipedia-1word.json` + `rumi-set.json`/`jawi-set.json` train split) | Rule-based. Retries pre-1986 spelling variants, splits joined prefixes, and flags ambiguous/unknown words. |
 | OCR baseline | Tesseract | Used as benchmark baseline. |
 | VLM OCR baseline | Configured VLM/API | Used where sample privacy and API settings permit. |
-| Agent orchestration | LangChain | Coordinates steps, validation, retries, and output parsing. |
-| Agent LLM | OpenRouter or configured LLM APIs | Must be configured via environment variables. |
+| Agent orchestration | LangChain (`langchain-core` runnables) | Translation, Summarisation and Knowledge Extraction are one runnable chain, with `RunnableParallel` for the concurrent pair. Retries stay in the Runtime Fault Handler. Validation and output parsing stay in the agents. |
+| Agent LLM | OpenRouter, called through LangChain `ChatOpenAI` (`langchain-openai`) | `ChatOpenAI` is pointed at the OpenRouter base URL. Key and model are configured via environment variables. |
 | Storage | Supabase | Database and file storage. |
 
 | Agent | Model/Tool | Output Control |
 | --- | --- | --- |
 | Romanisation Agent | Method A neural model + Method B dictionary (no LLM) | Must return both readings, the agreement score, and the ambiguous/unknown word log. |
-| Translation Agent | LangChain prompt chain using configured LLM provider | Must translate into modern Malay and avoid unsupported additions. |
-| Summarisation Agent | LangChain prompt chain using configured LLM provider | Must summarise from the translation, not invent new facts. |
-| Knowledge Extraction Agent | LangChain structured-output chain using configured LLM provider | Must return JSON with entities, dates, places, topics, relationships, and confidence. |
+| Translation Agent | LangChain `ChatOpenAI` call to the configured OpenRouter model | Must translate into modern Malay and avoid unsupported additions. |
+| Summarisation Agent | LangChain `ChatOpenAI` call to the configured OpenRouter model | Must summarise from the translation, not invent new facts. |
+| Knowledge Extraction Agent | LangChain `ChatOpenAI` call to the configured OpenRouter model. The JSON is validated by the agent itself, with one repair call. | Must return JSON with entities, dates, places, topics, relationships, and confidence. |
 
 ## Coordination Logic
 
@@ -123,6 +123,43 @@ Method A and Method B run in parallel on the same OCR text. Translation must fin
 8. Flagged or incomplete items are shown to the user and require human review before being used as final evidence.
 
 The same stage order is implemented once in `pipeline_runner.iter_agent_pipeline` and reused by the CLI runner, the FastAPI streaming endpoint, and the upload job runner.
+
+## LangChain Orchestration
+
+Implemented in `pipeline_runner.build_llm_chain` and `llm_text_runtime.LLMTextRuntime`.
+
+**What uses LangChain.** The three LLM stages. Romanisation (Method A and Method B) and the Inter-Method Agreement Gate are plain Python and run before the chain, because they make no LLM call.
+
+**The chain.** Translation, then Summarisation and Knowledge Extraction concurrently, is one LangChain runnable:
+
+```python
+RunnablePassthrough.assign(translation=RunnableLambda(translate))
+    | RunnableAssign(RunnableParallel(knowledge=..., summary=...))
+```
+
+```mermaid
+flowchart LR
+    IN[Input: romanised text] --> T[translate]
+    T --> P{RunnableParallel}
+    P --> K[extract_knowledge]
+    P --> S[summarise]
+    K --> OUT[Output: translation, knowledge, summary]
+    S --> OUT
+```
+
+- The input is `{"romanised": text}`. Each step adds one key that holds the `StageOutcome` of its stage.
+- Each step is a `RunnableLambda` that calls `fault_handler.run_stage` with the stage function, its fallback and its retry settings. A step therefore never raises. A failed stage passes its fallback down the chain and is marked incomplete.
+- When the orchestrator skips the summary for a short text, the `RunnableParallel` holds only the knowledge step.
+- `iter_agent_pipeline` consumes the chain with `chain.stream()`. The translation result arrives as soon as it is ready, and the two concurrent results arrive in the order they finish. Each one becomes an `agent_done` event, so the event stream is the same as before LangChain was introduced.
+
+**The LLM call.** `LLMTextRuntime.generate_text` sends a system message and a user message through `ChatOpenAI`, configured with the OpenRouter base URL (`https://openrouter.ai/api/v1`), the model chosen for the run (from the server-side allowlist for API requests), a 120 second timeout, and `max_retries=0`. The agents keep their own prompts, temperature and token limit. Mock mode returns before any `ChatOpenAI` object is created.
+
+**What LangChain does not do here.** It does not retry, validate or parse. Retries belong to the Runtime Fault Handler, JSON validation and the repair call belong to the Knowledge Extraction agent, and the 85% check belongs to the Inter-Method Agreement Gate. LangGraph is not used: the chain has no cycles, and the retry loop lives inside each step.
+
+**Notes.**
+
+- The first live LLM call in a process loads `langchain-openai`, which also loads `transformers` and `torch`. This happens once per process. On the development laptop it added about 8 seconds to the first Translation stage when Method A had already loaded `transformers` and `torch`, and about 30 seconds when it had not.
+- If a client disconnects after the translation result, the two concurrent stages may already have started and will finish in the background.
 
 Steps 1 to 5 describe the planned Supabase-backed flow. What is implemented today for uploads is described in "Upload and Run Pipeline" below.
 
@@ -232,7 +269,7 @@ For this reason, the system:
 
 Implemented in `fault_handler.run_stage`. Every stage goes through it.
 
-1. The stage function is called under a per-attempt timeout (180 seconds by default).
+1. The stage function is called under a per-attempt timeout (180 seconds by default). For the LLM stages the handler is called from inside the LangChain chain step, see "LangChain Orchestration".
 2. The result is classified as `completed`, `failed_exception`, `failed_timeout`, or `failed_empty_output`.
 3. If the stage has retries (`max_retries`) and the failure is an exception or a timeout, the handler waits and calls the stage again. Empty output is never retried, because the stage ran and had nothing to return.
 4. The wait uses exponential backoff with jitter: a random value between half and the full ceiling, where the ceiling is 1 second for the first retry and doubles each time, capped at 10 seconds.
@@ -245,6 +282,8 @@ Every outcome records `attempts`, the number of times the stage function was cal
 | --- | --- | --- |
 | Romanisation Method A, Method B | 0 | They run locally. A failure such as a missing model or lookup file is not transient. |
 | Translation, Summarisation, Knowledge Extraction | 2 | They call an external API, where rate limits and short outages are common. |
+
+The handler is the only place where an LLM call is retried. `ChatOpenAI` is created with `max_retries=0`, because its default of 2 retries inside the client would multiply the attempts (up to 9 calls for one stage) and hide them from `attempts`.
 
 A timed-out call cannot be cancelled, so a retry after a timeout can overlap with the abandoned call. Retries are written to the Python log today. They will also be stored in `system_logs` and counted in `agent_runs.retry_count` once Supabase is connected.
 
@@ -263,6 +302,8 @@ The planned `extracted_knowledge` table uses different field names (`entities`, 
 ## External Service Boundary
 
 - Manuscript data leaves the machine only when `ALLOW_EXTERNAL_MANUSCRIPT_API=true`. The flag covers the three LLM agents (manuscript text to OpenRouter) and the VLM OCR baseline in `ocr_llm.py` (page images to OpenRouter). It is checked when the runtime is created and again before each call.
+- The three LLM agents reach OpenRouter through LangChain `ChatOpenAI`. No other LangChain component makes a network call.
+- LangSmith tracing must stay off. If `LANGSMITH_TRACING` or `LANGCHAIN_TRACING_V2` is set to `true` together with a LangSmith key, LangChain uploads chain inputs and outputs, which are manuscript text, to LangSmith. This is outside the `ALLOW_EXTERNAL_MANUSCRIPT_API` check. Neither variable is set by this project, and the tests clear both.
 - Romanisation runs locally and sends nothing out. Method A downloads its model weights from HuggingFace on first use.
 - Uploaded documents, rendered pages, OCR output and run records stay on the machine under `STORAGE_DIR`. Both OCR providers used by the upload pipeline (`tesseract`, `fixture`) run locally.
 - The API never substitutes mock text for a live result. Without a key, or without the flag, `POST /api/pipeline/run` returns `503`. Mock output is served only when `APP_MODE=demo_mock` is set, and such runs report `mode: mock`.
@@ -275,7 +316,7 @@ The planned `extracted_knowledge` table uses different field names (`entities`, 
 | --- | --- |
 | OCR preprocessing | Retry once with safer preprocessing settings. (Planned.) |
 | OCR model inference | Retry once if runtime fails, not if input is unreadable. (Planned.) |
-| LLM agent call | Implemented. Retry up to 2 times on an exception or a timeout, with exponential backoff and jitter. Same prompt each time. Not retried on empty output. |
+| LLM agent call | Implemented in the Runtime Fault Handler. Retry up to 2 times on an exception or a timeout, with exponential backoff and jitter. Same prompt each time. Not retried on empty output. The LangChain client itself does not retry. |
 | JSON parsing (Knowledge Extraction) | Implemented. One repair call that sends the invalid output back and asks for valid JSON only. No further retry. |
 | Romanisation Method A and Method B | No retry. Both run locally. |
 | Supabase write | Retry up to 3 times for temporary network errors. (Planned.) |

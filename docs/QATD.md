@@ -36,7 +36,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | Database | Supabase project for prototype testing. |
 | OCR training | Google Colab with PyTorch where GPU is required. |
 | OCR preprocessing | Python, OpenCV, PyMuPDF. |
-| Agents | LangChain with mocked LLM for automated tests and configured LLM API for selected manual tests. |
+| Agents | LangChain (`ChatOpenAI` and a runnable chain). Automated tests run the real LangChain code and fake only the HTTP request to OpenRouter. Selected manual tests use the configured LLM API. |
 | Test runner | Pytest or equivalent Python test runner. |
 
 ## Test Data Strategy
@@ -84,6 +84,9 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | AG-09 | A stage fails during an uploaded run | Mock a failing translation call. | The run still finishes. Status is `needs_review`, `incomplete_stages` lists `translation`, and summary and knowledge extraction complete. |  |
 | AG-10 | No OCR text | Upload a document for which OCR returns nothing. | Agent stages are `skipped`, no LLM call is made, and the run ends as `failed` with the cause. |  |
 | AG-11 | Run survives a restart | Read a finished run from a new job runner; read a run saved as `running`. | The finished run is returned unchanged. The interrupted run is reported as `failed`. |  |
+| AG-12 | LangChain chain keeps the event stream | Run the pipeline in mock mode, with and without the summary. | Events arrive as: translation start and done, then knowledge and summary start, then their results in the order they finish, then the final result. The translation result arrives before the concurrent pair finishes. |  |
+| AG-13 | LangChain client does not retry | Fake a `503` from OpenRouter for the translation call. | One request per attempt: 3 requests for 3 fault handler attempts. The error text names the status and body. |  |
+| AG-14 | Request sent through `ChatOpenAI` | Fake the HTTP response and inspect the request. | The request goes to the OpenRouter chat completions URL with the chosen model, the agent temperature, `max_tokens`, and a system and a user message. |  |
 | AG-06 | Agent contradiction | Mock translation contradicting source meaning. | System flags contradiction for human review. |  |
 
 ## Romanisation Test Cases

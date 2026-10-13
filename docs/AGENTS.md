@@ -56,7 +56,7 @@ The stack above is the target. This is what exists in the repo today. Keep this 
 - Dataset split: by article into train, validation and test, not by issue. Line count is TBD from the annotation export.
 - TrOCR: no training or inference code in this repo yet. OCR for uploads runs behind an `OCRProvider` interface (`ocr_providers.py`) with a Tesseract baseline and a fixture provider; TrOCR will be added as another provider.
 - Agent pipeline: implemented in `pipeline_runner.py` with Method A/B romanisation, agreement gate, fault handler, and concurrent summarisation and knowledge extraction.
-- LangChain: not used in code yet. Agents call OpenRouter directly through `llm_text_runtime.py`.
+- LangChain: used for the three LLM stages. `llm_text_runtime.py` calls OpenRouter through `langchain-openai` `ChatOpenAI`, and `pipeline_runner.build_llm_chain` expresses Translation, then Summarisation and Knowledge Extraction, as one runnable chain with `RunnableParallel`. Romanisation and the agreement gate are plain Python. LangGraph is not used.
 - Frontend: a single static `frontend/index.html`, not a React app yet.
 - Backend: FastAPI app in `backend/main.py` with a health route, a config route, the streaming pipeline route, a document upload route, and run status and event routes. Uploads are processed by a background job runner (`job_runner.py`).
 - Supabase: not implemented in code yet. The CLI runner writes results to local files under `output/`. Uploads and run records are stored locally under `storage/` behind a `Storage` interface (`document_storage.py`).
@@ -101,10 +101,14 @@ The stack above is the target. This is what exists in the repo today. Keep this 
 OCR text
   -> SubAgent 1 Romanisation: Method A (jawi-nanot5-small, neural) || Method B (reverse-lookup dictionary)
   -> Inter-Method Agreement Gate (>=85% character agreement, else flag for human review)
-  -> SubAgent 2 Translation (OpenRouter LLM, default google/gemini-2.5-flash)
-  -> SubAgent 3 Summarisation || SubAgent 4 Knowledge Extraction (concurrent, both consume the translation)
+  -> SubAgent 2 Translation (OpenRouter LLM through LangChain ChatOpenAI, default google/gemini-2.5-flash)
+  -> SubAgent 3 Summarisation || SubAgent 4 Knowledge Extraction (concurrent in a RunnableParallel, both consume the translation)
 Runtime Fault Handler wraps every stage.
 ```
+
+- SubAgents 2 to 4 are one LangChain runnable chain (`pipeline_runner.build_llm_chain`). Each chain step calls the Runtime Fault Handler, so retries and fallbacks are unchanged by LangChain.
+- Keep `max_retries=0` on `ChatOpenAI`. The Runtime Fault Handler is the only place where an LLM call is retried.
+- Do not enable LangSmith tracing (`LANGSMITH_TRACING`, `LANGCHAIN_TRACING_V2`). It would upload manuscript text outside the `ALLOW_EXTERNAL_MANUSCRIPT_API` check.
 
 - Keep the three validation mechanisms separate and named: Inter-Method Agreement Gate (runtime), Stage Evaluation Metrics (offline), Runtime Fault Handler (runtime fault tolerance).
 - Do not use LLM-as-a-judge for scoring or evaluation.
