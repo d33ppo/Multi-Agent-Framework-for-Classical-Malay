@@ -2,7 +2,8 @@
 Text-generation runtime for post-OCR agents.
 
 Supports:
-  - OpenRouter (https://openrouter.ai) — access to hundreds of models
+  - OpenRouter (https://openrouter.ai) — access to hundreds of models,
+    called through LangChain's ChatOpenAI pointed at the OpenRouter base URL
   - mock mode for offline/local verification
 
 Live mode sends manuscript text to OpenRouter, so it needs both
@@ -28,7 +29,8 @@ except ImportError:  # pragma: no cover
 
 ENV_FILE = Path(__file__).resolve().parent / ".env"
 
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_TIMEOUT_SECONDS = 120
 DEFAULT_MODEL = "google/gemini-2.5-flash"
 DEMO_MOCK_MODE = "demo_mock"
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -135,7 +137,7 @@ def resolve_runtime(allow_mock_fallback: bool = False) -> RuntimeSelection:
 
 
 class LLMTextRuntime:
-    """Thin wrapper around OpenRouter used by the pipeline agents."""
+    """Thin wrapper around LangChain's ChatOpenAI, pointed at OpenRouter, used by the pipeline agents."""
 
     def __init__(
         self,
@@ -153,6 +155,7 @@ class LLMTextRuntime:
             self.mode = selection.mode
 
         self.model = "mock" if self.mode == "mock" else (model or default_model())
+        self._chat = None  # ChatOpenAI, built on the first live call
 
     @property
     def is_mock(self) -> bool:
@@ -166,7 +169,7 @@ class LLMTextRuntime:
         max_tokens: int = 10000,
         temperature: float = 0.2,
     ) -> str:
-        """Generate plain-text output via OpenRouter."""
+        """Generate plain-text output via OpenRouter, using LangChain's ChatOpenAI."""
         if self.is_mock:
             raise RuntimeError("Mock runtime does not support free-form generation.")
 
@@ -175,37 +178,52 @@ class LLMTextRuntime:
         if problem:
             raise LLMNotConfiguredError(problem)
 
-        import requests
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from openai import APIStatusError
 
-        effective_max_tokens = (
-            _get_int_env("OPENROUTER_MAX_TOKENS") or max_tokens
-        )
-
-        headers = {
-            "Authorization": f"Bearer {env_value('OPENROUTER_API_KEY')}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/malay-fyp/classical-malay-pipeline",
-            "X-Title": "Classical Malay Multi-Agent Pipeline",
-        }
-        payload = {
-            "model": self.model,
-            "max_tokens": effective_max_tokens,
-            "temperature": temperature,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        }
-
-        response = requests.post(
-            OPENROUTER_API_URL, headers=headers, json=payload, timeout=120
-        )
-        if response.status_code != 200:
-            raise RuntimeError(
-                f"OpenRouter API error {response.status_code}: {response.text[:500]}"
+        try:
+            reply = self._chat_model().invoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
+                temperature=temperature,
+                # Sent in the request body as "max_tokens", the field OpenRouter documents.
+                # ChatOpenAI would rename its own max_tokens setting to "max_completion_tokens".
+                extra_body={"max_tokens": _get_int_env("OPENROUTER_MAX_TOKENS") or max_tokens},
             )
+        except APIStatusError as exc:
+            raise RuntimeError(
+                f"OpenRouter API error {exc.status_code}: {exc.response.text[:500]}"
+            ) from exc
 
-        return _extract_text(response.json())
+        return _extract_text(_as_openai_response(reply))
+
+    def _chat_model(self):
+        if self._chat is None:
+            from langchain_openai import ChatOpenAI
+
+            self._chat = ChatOpenAI(
+                model=self.model,
+                base_url=OPENROUTER_BASE_URL,
+                api_key=env_value("OPENROUTER_API_KEY"),
+                timeout=OPENROUTER_TIMEOUT_SECONDS,
+                # The Runtime Fault Handler owns retries. The SDK default of 2 would multiply them.
+                max_retries=0,
+                default_headers={
+                    "HTTP-Referer": "https://github.com/malay-fyp/classical-malay-pipeline",
+                    "X-Title": "Classical Malay Multi-Agent Pipeline",
+                },
+            )
+        return self._chat
+
+
+def _as_openai_response(reply) -> dict:
+    """Put a LangChain AIMessage back into the response shape `_extract_text` checks."""
+    metadata = reply.response_metadata or {}
+    return {
+        "model": metadata.get("model_name", "unknown"),
+        "choices": [
+            {"finish_reason": metadata.get("finish_reason"), "message": {"content": reply.content}}
+        ],
+    }
 
 
 def _extract_text(data: dict) -> str:

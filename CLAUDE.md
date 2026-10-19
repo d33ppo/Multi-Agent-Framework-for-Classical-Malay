@@ -82,7 +82,7 @@ The Stack list above is the target stack. This section states what exists in the
 - **Dataset preparation:** 2 issues (1950_11, 1950_12) have human-corrected ground truth. 1950_07, 1950_09 and 1950_10 are uncorrected and excluded
 - **TrOCR:** no training or inference code in this repo yet. OCR for uploads runs behind an `OCRProvider` interface (`ocr_providers.py`) with a Tesseract baseline and a fixture provider; TrOCR will be added as another provider
 - **Agent pipeline:** implemented with Method A/B romanisation, agreement gate, fault handler, concurrent summary + KE (`pipeline_runner.py`)
-- **LangChain:** not used in code yet. Agents call OpenRouter directly through `llm_text_runtime.py`
+- **LangChain:** used for the three LLM stages. `llm_text_runtime.py` calls OpenRouter through `langchain-openai` `ChatOpenAI`, and `pipeline_runner.build_llm_chain` expresses Translation, then Summarisation and Knowledge Extraction, as one runnable chain with `RunnableParallel`. Romanisation and the agreement gate are plain Python. LangGraph is not used
 - **Frontend:** a single static `frontend/index.html`, not a React app yet
 - **Backend:** FastAPI app in `backend/main.py` with a health route, a config route, the streaming pipeline route, a document upload route, and run status and event routes. Uploads are processed by a background job runner (`job_runner.py`)
 - **Supabase:** not implemented in code yet. The CLI runner writes results to local files under `output/`. Uploads and run records are stored locally under `storage/` behind a `Storage` interface (`document_storage.py`)
