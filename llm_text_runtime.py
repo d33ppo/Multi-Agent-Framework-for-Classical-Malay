@@ -4,6 +4,11 @@ Text-generation runtime for post-OCR agents.
 Supports:
   - OpenRouter (https://openrouter.ai) — access to hundreds of models
   - mock mode for offline/local verification
+
+Live mode sends manuscript text to OpenRouter, so it needs both
+OPENROUTER_API_KEY and ALLOW_EXTERNAL_MANUSCRIPT_API=true. Mock mode is never
+chosen silently: the caller must ask for it (provider="mock") or opt in to the
+fallback (allow_mock_fallback=True, used by the CLI and by APP_MODE=demo_mock).
 """
 
 from __future__ import annotations
@@ -25,6 +30,12 @@ ENV_FILE = Path(__file__).resolve().parent / ".env"
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "google/gemini-2.5-flash"
+DEMO_MOCK_MODE = "demo_mock"
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+class LLMNotConfiguredError(EnvironmentError):
+    """Live calls to an external provider are not possible with the current configuration."""
 
 
 def _load_env_file(env_file: Path = ENV_FILE) -> None:
@@ -65,23 +76,62 @@ def _get_int_env(*names: str) -> int | None:
     return None
 
 
+def env_value(name: str, default: str = "") -> str:
+    """Read an env var, treating unset, empty and whitespace-only values as the default."""
+    return (os.environ.get(name) or "").strip() or default
+
+
+def env_flag(name: str) -> bool:
+    return env_value(name).lower() in _TRUE_VALUES
+
+
+def demo_mock_enabled() -> bool:
+    """True when APP_MODE=demo_mock, the only mode in which the API may serve mock output."""
+    return env_value("APP_MODE").lower() == DEMO_MOCK_MODE
+
+
+def external_api_allowed() -> bool:
+    """True when manuscript text or images may be sent to an external provider."""
+    return env_flag("ALLOW_EXTERNAL_MANUSCRIPT_API")
+
+
+def default_model() -> str:
+    return env_value("OPENROUTER_MODEL", DEFAULT_MODEL)
+
+
+def allowed_models() -> list[str]:
+    """Models an API client may request, from OPENROUTER_ALLOWED_MODELS (comma-separated)."""
+    names = [name.strip() for name in env_value("OPENROUTER_ALLOWED_MODELS").split(",")]
+    return list(dict.fromkeys(name for name in names if name)) or [DEFAULT_MODEL]
+
+
+def live_config_problem() -> str | None:
+    """Say why live OpenRouter calls are unavailable, or return None when they are allowed."""
+    if not env_value("OPENROUTER_API_KEY"):
+        return "OPENROUTER_API_KEY is not set. Add it to your .env file."
+    if not external_api_allowed():
+        return (
+            "ALLOW_EXTERNAL_MANUSCRIPT_API is not true, so manuscript text may not be sent "
+            "to OpenRouter. Set ALLOW_EXTERNAL_MANUSCRIPT_API=true in your .env file to allow it."
+        )
+    return None
+
+
 @dataclass
 class RuntimeSelection:
     provider: str
     mode: str
 
 
-def resolve_runtime(allow_mock_fallback: bool = True) -> RuntimeSelection:
-    if os.environ.get("OPENROUTER_API_KEY"):
+def resolve_runtime(allow_mock_fallback: bool = False) -> RuntimeSelection:
+    problem = live_config_problem()
+    if problem is None:
         return RuntimeSelection(provider="openrouter", mode="live")
 
     if allow_mock_fallback:
         return RuntimeSelection(provider="mock", mode="mock")
 
-    raise EnvironmentError(
-        "OPENROUTER_API_KEY is not set. "
-        "Add it to your .env file: OPENROUTER_API_KEY=sk-or-..."
-    )
+    raise LLMNotConfiguredError(problem)
 
 
 class LLMTextRuntime:
@@ -90,7 +140,7 @@ class LLMTextRuntime:
     def __init__(
         self,
         model: str | None = None,
-        allow_mock_fallback: bool = True,
+        allow_mock_fallback: bool = False,
         # kept for backward-compat with pipeline_runner.py CLI
         provider: str = "auto",
     ):
@@ -102,11 +152,7 @@ class LLMTextRuntime:
             self.provider = selection.provider
             self.mode = selection.mode
 
-        self.model = (
-            "mock"
-            if self.mode == "mock"
-            else (model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL))
-        )
+        self.model = "mock" if self.mode == "mock" else (model or default_model())
 
     @property
     def is_mock(self) -> bool:
@@ -124,6 +170,11 @@ class LLMTextRuntime:
         if self.is_mock:
             raise RuntimeError("Mock runtime does not support free-form generation.")
 
+        # Checked again at call time so no code path can send text once the flag is off.
+        problem = live_config_problem()
+        if problem:
+            raise LLMNotConfiguredError(problem)
+
         import requests
 
         effective_max_tokens = (
@@ -131,7 +182,7 @@ class LLMTextRuntime:
         )
 
         headers = {
-            "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+            "Authorization": f"Bearer {env_value('OPENROUTER_API_KEY')}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/malay-fyp/classical-malay-pipeline",
             "X-Title": "Classical Malay Multi-Agent Pipeline",
@@ -151,7 +202,7 @@ class LLMTextRuntime:
         )
         if response.status_code != 200:
             raise RuntimeError(
-                f"OpenRouter API error {response.status_code}: {response.text}"
+                f"OpenRouter API error {response.status_code}: {response.text[:500]}"
             )
 
         return _extract_text(response.json())

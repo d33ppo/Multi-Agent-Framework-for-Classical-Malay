@@ -55,6 +55,10 @@ Automatic provider selection:
 python pipeline_runner.py fixtures/pipeline_inputs/good_qwen_sample.txt
 ```
 
+A live run needs `OPENROUTER_API_KEY` and `ALLOW_EXTERNAL_MANUSCRIPT_API=true` in `.env`, because the
+translation, summary and knowledge agents send the text to OpenRouter. If either is missing, the
+runner prints a notice and runs the agents in mock mode.
+
 Offline mock mode:
 
 ```bash

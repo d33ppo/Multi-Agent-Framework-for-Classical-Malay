@@ -91,29 +91,8 @@
           <label for="modelSelect" class="text-sm text-slate-600 font-medium">Model:</label>
           <select id="modelSelect"
             class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <optgroup label="Anthropic (via OpenRouter)">
-              <option value="anthropic/claude-sonnet-4-6">Claude Sonnet 4.6</option>
-              <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku (faster)</option>
-            </optgroup>
-            <optgroup label="Google">
-              <option value="google/gemini-2.5-flash" selected>Gemini 2.5 Flash (Default)</option>
-              <option value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
-              <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
-            </optgroup>
-            <optgroup label="Qwen">
-              <option value="qwen/qwen3-30b-a3b">Qwen3 30B</option>
-              <option value="qwen/qwen3-235b-a22b">Qwen3 235B</option>
-              <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
-            </optgroup>
-            <optgroup label="OpenAI (via OpenRouter)">
-              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-            </optgroup>
-            <optgroup label="Meta (Free)">
-              <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (free)</option>
-            </optgroup>
-            <optgroup label="Dev">
-              <option value="mock">Mock (offline demo)</option>
-            </optgroup>
+            <!-- Replaced on load with the server allowlist from /api/config -->
+            <option value="">Server default</option>
           </select>
         </div>
         <button id="runBtn" onclick="runPipeline()"
@@ -473,6 +452,10 @@
       const jawi  = document.getElementById('jawiInput').value.trim();
       const model = document.getElementById('modelSelect').value;
       if (!jawi) { showError('Please enter Jawi text first.'); return; }
+      if (maxTextChars && jawi.length > maxTextChars) {
+        showError(`Text is too long (${jawi.length} characters). The limit is ${maxTextChars}.`);
+        return;
+      }
 
       setLoading(true);
       hideError();
@@ -563,6 +546,32 @@
       document.getElementById('errorBox').classList.remove('hidden');
     }
     function hideError() { document.getElementById('errorBox').classList.add('hidden'); }
+
+    // ── Model list and limits (from the server) ───────────────────
+    let maxTextChars = null;
+
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/config');
+        if (!res.ok) return;
+        const cfg = await res.json();
+        maxTextChars = cfg.max_text_chars || null;
+
+        const select = document.getElementById('modelSelect');
+        select.innerHTML = '';
+        const addOption = (value, label, selected) => {
+          const opt = document.createElement('option');
+          opt.value = value; opt.textContent = label; opt.selected = !!selected;
+          select.appendChild(opt);
+        };
+        (cfg.allowed_models || []).forEach(id => {
+          const isDefault = id === cfg.default_model;
+          addOption(id, isDefault ? `${id} (default)` : id, isDefault);
+        });
+        if (cfg.demo_mock) addOption('mock', 'Mock (offline demo)', false);
+      } catch (_) { /* keep the "Server default" option */ }
+    }
+    loadConfig();
 
     document.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runPipeline();

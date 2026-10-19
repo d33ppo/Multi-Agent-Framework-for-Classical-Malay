@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from fault_handler import StageOutcome, run_stage
-from knowledge_agent import run_knowledge_agent
-from llm_text_runtime import LLMTextRuntime
+from knowledge_agent import KnowledgeValidationError, run_knowledge_agent
+from llm_text_runtime import LLMNotConfiguredError, LLMTextRuntime, live_config_problem
 from ocr_input_adapter import load_ocr_input
 from pipeline_types import PipelineResult
 from result_exporter import export_pipeline_run
@@ -41,6 +41,12 @@ from translation_agent import run_translation_agent
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "output" / "pipeline"
 PIPELINE_VERSION = "v0.2-agreement-gate"
+
+# The three LLM stages call an external API, so a failed call is retried. Local romanisation is not.
+LLM_STAGE_MAX_RETRIES = 2
+# Failures a retry cannot fix. Knowledge extraction already made its one repair call.
+LLM_NO_RETRY_ON = (LLMNotConfiguredError, KnowledgeValidationError)
+LLM_STAGE_RETRY = {"max_retries": LLM_STAGE_MAX_RETRIES, "no_retry_on": LLM_NO_RETRY_ON}
 
 
 def iter_agent_pipeline(
@@ -80,7 +86,8 @@ def iter_agent_pipeline(
     # SubAgent 2: Translation (falls back to the romanised text)
     yield {"type": "agent_start", "agent": "translation", "label": "Translation Agent"}
     translation = run_stage(
-        "translation", run_translation_agent, romanisation.text, runtime, fallback=romanisation.text
+        "translation", run_translation_agent, romanisation.text, runtime,
+        fallback=romanisation.text, **LLM_STAGE_RETRY,
     )
     stages["translation"] = translation
     translation_text = translation.output.strip()
@@ -99,7 +106,9 @@ def iter_agent_pipeline(
 
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = {
-            pool.submit(run_stage, agent, func, translation_text, runtime, fallback=fallback): (agent, label)
+            pool.submit(
+                run_stage, agent, func, translation_text, runtime, fallback=fallback, **LLM_STAGE_RETRY
+            ): (agent, label)
             for agent, (label, func, fallback) in jobs.items()
         }
         for future in as_completed(futures):
@@ -131,6 +140,7 @@ def _done_event(agent: str, label: str, outcome: StageOutcome, result: Any) -> d
         "duration": outcome.duration,
         "incomplete": outcome.incomplete,
         "error": outcome.error,
+        "attempts": outcome.attempts,
     }
 
 
@@ -210,6 +220,11 @@ def main() -> None:
 
     if sys.platform == "win32":
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+    if args.provider != "mock":
+        problem = live_config_problem()
+        if problem:
+            print(f"Running the agents in MOCK mode: {problem}")
 
     artifacts = run_pipeline(
         args.input_path,

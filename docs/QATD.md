@@ -73,8 +73,9 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | AG-01 | Run full pipeline | Run pipeline on valid OCR result. | All agents complete and outputs are stored. |  |
 | AG-02 | Stop on missing OCR | Run pipeline without OCR result. | API returns validation error. |  |
 | AG-03 | Low-confidence OCR pipeline | Run pipeline on low-confidence OCR. | System blocks or flags run unless user allows continuation. |  |
-| AG-04 | Invalid agent JSON output | Mock invalid JSON from Knowledge Extraction Agent. | System retries JSON repair and then marks failed/needs_review if still invalid. |  |
-| AG-05 | Failed LLM/API call | Mock unavailable LLM provider. | System retries or uses configured fallback; otherwise status becomes `failed_external_api`. |  |
+| AG-04 | Invalid agent JSON output | Mock invalid JSON from Knowledge Extraction Agent. | System makes one JSON repair call. If the output is still invalid, the stage is marked incomplete and no further LLM call is made. |  |
+| AG-05 | Failed LLM/API call | Mock an LLM stage that raises. | Stage is retried up to 2 times with backoff. It completes if a later attempt succeeds; otherwise the last valid output is passed through and the stage is marked incomplete. `attempts` is recorded. |  |
+| AG-07 | Retry scope | Mock empty output from an LLM stage, and a failing romanisation method. | Neither is retried: each is called once. |  |
 | AG-06 | Agent contradiction | Mock translation contradicting source meaning. | System flags contradiction for human review. |  |
 
 ## Romanisation Test Cases
@@ -110,11 +111,12 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 
 | ID | Test Case | Steps | Expected Result | Pass/Fail |
 | --- | --- | --- | --- | --- |
-| KE-01 | Extract entities and topics | Run Knowledge Extraction Agent. | JSON includes entities, dates, places, topics, relationships, and confidence. |  |
+| KE-01 | Extract entities and topics | Run Knowledge Extraction Agent. | JSON has exactly `people`, `places`, `dates`, `organizations`, `themes`, `key_claims` as lists of strings, plus an `evidence` list. Unknown keys are dropped. |  |
 | KE-02 | Inconsistent extracted entity | Mock entity not supported by translation/source. | System flags entity for review. |  |
-| KE-03 | Invalid JSON extraction | Return malformed JSON. | Retry and then mark failed/needs_review if unresolved. |  |
+| KE-03 | Invalid JSON extraction | Return malformed JSON, or JSON that breaks the schema. | One repair call. If the repaired output is valid it is used; otherwise the stage is marked incomplete. |  |
 | KE-04 | Compare to annotation | Run `stage_metrics.py knowledge` against manually tagged gold entities. | Per-field and micro precision/recall/F1 are recorded. |  |
 | KE-05 | Concurrency | Run summary and knowledge extraction on the same translation. | Both start after translation and run concurrently. |  |
+| KE-06 | Evidence quote check | Mock evidence items whose quotes are and are not in the input text. | Quotes found word for word are kept. Paraphrased, missing, or malformed evidence is dropped without failing the stage. |  |
 
 ## Failure/Error Test Cases
 
@@ -122,11 +124,15 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | --- | --- | --- | --- |
 | ERR-01 | Unsupported file type | Return `400` and do not store invalid file. |  |
 | ERR-02 | Unreadable manuscript image | Return `422`, log error, and request better sample/manual review. |  |
-| ERR-03 | External API unavailable | Retry or use configured fallback; otherwise mark `failed_external_api`. |  |
+| ERR-03 | External API unavailable | Retry up to 2 times with backoff; otherwise pass the last valid output through and mark the stage incomplete. |  |
 | ERR-04 | Supabase write failure | Retry and log failure. |  |
 | ERR-05 | Missing gold standard | Run pipeline but mark metrics unavailable. |  |
 | ERR-07 | Stage timeout or empty output | Runtime Fault Handler logs, passes through last valid output, flags stage incomplete. |  |
 | ERR-06 | Human reviewer correction | Store correction in `validation_reviews` and preserve original output. |  |
+| ERR-08 | LLM key missing, or external API not allowed | `POST /api/pipeline/run` returns `503` and no mock text. With `APP_MODE=demo_mock` it runs and reports `mode: mock`. |  |
+| ERR-09 | Model not on the server allowlist | Return `400`. No LLM call is made. |  |
+| ERR-10 | Input text over `MAX_TEXT_CHARS` | Return `413`. |  |
+| ERR-11 | VLM OCR baseline without `ALLOW_EXTERNAL_MANUSCRIPT_API=true` | `ocr_llm.py` refuses to run and the image is not read or sent. |  |
 
 ## Usability Test Cases
 

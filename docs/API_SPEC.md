@@ -18,6 +18,14 @@ The backend API is planned as a Python/FastAPI service. Routes use JSON response
 }
 ```
 
+The two routes implemented today (`/api/config` and `/api/pipeline/run`) use the FastAPI default error body instead:
+
+```json
+{
+  "detail": "Model 'openai/gpt-4o' is not allowed. Allowed models: google/gemini-2.5-flash"
+}
+```
+
 ## Status Codes
 
 | Code | Meaning |
@@ -27,9 +35,10 @@ The backend API is planned as a Python/FastAPI service. Routes use JSON response
 | 202 | Processing accepted. |
 | 400 | Invalid request. |
 | 404 | Resource not found. |
+| 413 | Request text is longer than the configured limit. |
 | 422 | Valid request format but file/content cannot be processed. |
 | 500 | Internal server error. |
-| 503 | External OCR/LLM/API provider unavailable. |
+| 503 | External OCR/LLM/API provider unavailable or not configured. |
 
 ## Endpoints
 
@@ -207,7 +216,15 @@ year=1955
 }
 ```
 
-`model` defaults to `google/gemini-2.5-flash`. Use `"mock"` for offline runs (mock LLM and mock Method A).
+**Validation rules**
+
+- `jawi_text` is required, must not be blank, and may hold at most `MAX_TEXT_CHARS` characters (default 50000).
+- `model` is optional. When it is omitted or empty the server uses `OPENROUTER_MODEL` if that model is on the allowlist, otherwise the first allowlist entry.
+- `model` must be listed in `OPENROUTER_ALLOWED_MODELS` (default: `google/gemini-2.5-flash` only). The client cannot choose any other model.
+- `"model": "mock"` (mock LLM and mock Method A) is accepted only when the server runs with `APP_MODE=demo_mock`.
+- A live run needs `OPENROUTER_API_KEY` and `ALLOW_EXTERNAL_MANUSCRIPT_API=true` on the server, because the translation, summary and knowledge agents send manuscript text to OpenRouter.
+
+All of these are checked before the stream starts, so a rejected request gets a normal HTTP error status and never a `200` stream.
 
 **Event stream** (each line is `data: {json}`), in order:
 
@@ -215,7 +232,7 @@ year=1955
 | --- | --- |
 | `orchestrator_decision` | `label`, `skip_summary`, `word_count`, `duration` |
 | `agent_start` | `agent` (`romanisation`, `translation`, `summary`, `knowledge`), `label` |
-| `agent_done` | `agent`, `result`, `duration`, `incomplete`, `error`; romanisation also has `method_b_text` |
+| `agent_done` | `agent`, `result`, `duration`, `incomplete`, `error`; romanisation also has `method_b_text`; translation, summary and knowledge also have `attempts` |
 | `agreement_gate_done` | `status` (`passed`, `flagged`, `skipped`), `agreement`, `threshold`, `method_b_coverage`, `reason`, `needs_human_review` |
 | `agent_skipped` | `agent`, `reason` (summary skipped for short text) |
 | `pipeline_done` | `total_duration`, `model`, `mode`, `incomplete_stages`, `needs_human_review` |
@@ -223,7 +240,60 @@ year=1955
 
 `summary` and `knowledge` `agent_done` events arrive in completion order because the two stages run concurrently.
 
-**Errors:** `400` when `jawi_text` is empty.
+`attempts` is the number of times the stage was called. The three LLM stages are retried up to 2 times after an exception or a timeout, so the value is 1 to 3. A stage that still fails has `incomplete: true` and an `error` message. Its `result` is then the fallback: the romanised text for translation, an empty string for summary, and `{}` for knowledge.
+
+`mode` in `pipeline_done` is `live` or `mock`. It is `mock` only when the server runs with `APP_MODE=demo_mock`.
+
+**Knowledge result.** The `result` of the `knowledge` `agent_done` event is validated on the server and always has this shape:
+
+```json
+{
+  "people": ["Sukarno"],
+  "places": ["Kuala Lumpur"],
+  "dates": ["1955"],
+  "organizations": [],
+  "themes": ["lawatan"],
+  "key_claims": [],
+  "evidence": [
+    {"entity": "Sukarno", "quote": "Sukarno melawat Kuala Lumpur"}
+  ]
+}
+```
+
+The six named fields are lists of strings. `evidence` may be empty. Each `quote` is checked on the server and is kept only if it appears word for word in the translation that was given to the agent. If the model output is still invalid after one repair call, the stage is incomplete and `result` is `{}`.
+
+**Errors**
+
+| Status | When |
+| --- | --- |
+| `400` | `jawi_text` is blank, the model is not on the allowlist, or `"mock"` is requested without `APP_MODE=demo_mock`. |
+| `413` | `jawi_text` is longer than `MAX_TEXT_CHARS`. |
+| `422` | The body is not valid JSON or `jawi_text` is missing (FastAPI validation). |
+| `503` | Live LLM calls are not available: `OPENROUTER_API_KEY` is missing or `ALLOW_EXTERNAL_MANUSCRIPT_API` is not `true`. The server does not answer with mock text in this case. With `APP_MODE=demo_mock` the run proceeds with mock output and `mode: mock` instead. |
+
+A failure inside a stage after the stream has started does not change the HTTP status. It is reported in that stage's `agent_done` event and in `incomplete_stages`.
+
+### Get Frontend Configuration (implemented prototype)
+
+| Item | Detail |
+| --- | --- |
+| Method | `GET` |
+| Route | `/api/config` |
+| Purpose | Tell the frontend which models it may offer and how long the input may be. Contains no secrets. |
+| Success status | `200 OK` |
+
+**Response example**
+
+```json
+{
+  "allowed_models": ["google/gemini-2.5-flash"],
+  "default_model": "google/gemini-2.5-flash",
+  "demo_mock": false,
+  "max_text_chars": 50000
+}
+```
+
+The frontend builds its model list from `allowed_models` and adds a mock option only when `demo_mock` is true.
 
 ### Run Individual Agent
 

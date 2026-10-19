@@ -58,7 +58,7 @@ The stack above is the target. This is what exists in the repo today. Keep this 
 - Agent pipeline: implemented in `pipeline_runner.py` with Method A/B romanisation, agreement gate, fault handler, and concurrent summarisation and knowledge extraction.
 - LangChain: not used in code yet. Agents call OpenRouter directly through `llm_text_runtime.py`.
 - Frontend: a single static `frontend/index.html`, not a React app yet.
-- Backend: FastAPI app in `backend/main.py` with a health route and the streaming pipeline route.
+- Backend: FastAPI app in `backend/main.py` with a health route, a config route and the streaming pipeline route.
 - Supabase: not implemented in code yet. The CLI runner writes results to local files under `output/`.
 
 ## Forbidden Changes

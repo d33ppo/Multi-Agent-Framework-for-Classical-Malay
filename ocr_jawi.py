@@ -6,18 +6,32 @@ This module uses Tesseract OCR with Arabic language data to extract Jawi text.
 """
 
 import os
+import shutil
 import sys
 import time
 import pytesseract
 import cv2
 import numpy as np
+from dotenv import load_dotenv
 from PIL import Image
 
-# Point to Tesseract executable
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(PROJECT_DIR, ".env"))
 
 # Use local tessdata directory (contains ara.traineddata)
-TESSDATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tessdata")
+TESSDATA_DIR = os.path.join(PROJECT_DIR, "tessdata")
+
+
+def resolve_tesseract_cmd() -> str:
+    """Tesseract executable: TESSERACT_CMD from the environment, otherwise the one on PATH."""
+    configured = (os.environ.get("TESSERACT_CMD") or "").strip().strip('"')
+    command = configured or shutil.which("tesseract")
+    if not command:
+        raise FileNotFoundError(
+            "Tesseract executable not found. Set TESSERACT_CMD in your .env file "
+            "or add tesseract to PATH."
+        )
+    return command
 
 
 def preprocess_image(image_path: str) -> np.ndarray:
@@ -90,6 +104,8 @@ def extract_jawi_text(image_path: str) -> dict:
 
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Image not found: {image_path}")
+
+    pytesseract.pytesseract.tesseract_cmd = resolve_tesseract_cmd()
 
     # Preprocess
     processed = preprocess_image(image_path)
