@@ -23,3 +23,7 @@ rouge-score>=0.1.2
 # Web API
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9  # file uploads
+
+# PDF page rendering
+PyMuPDF>=1.24.3

@@ -6,6 +6,21 @@
 
 The backend API is planned as a Python/FastAPI service. Routes use JSON responses and store persistent data in Supabase.
 
+## Implementation Status
+
+Routes under `/api/` exist in `backend/main.py` today and are marked "implemented prototype" below. The other routes describe the planned Supabase-backed API.
+
+| Implemented route | Covers this part of the planned API |
+| --- | --- |
+| `GET /api/health` | Health check. |
+| `GET /api/config` | Not in the planned API. |
+| `POST /api/pipeline/run` | Agent pipeline on pasted Jawi text. |
+| `POST /api/documents` | `POST /documents`, `POST /documents/{document_id}/ocr` and `POST /ocr-results/{ocr_result_id}/pipeline` in one call: upload, OCR and the agent pipeline run as one background job. |
+| `GET /api/runs/{run_id}` | `GET /pipeline/{pipeline_id}/status` and the result routes (`GET /ocr-results/...`). |
+| `GET /api/runs/{run_id}/events` | Not in the planned API. |
+
+Uploads and run records are kept in local storage for now. Supabase is not connected yet.
+
 ## Common Error Response
 
 ```json
@@ -18,7 +33,7 @@ The backend API is planned as a Python/FastAPI service. Routes use JSON response
 }
 ```
 
-The two routes implemented today (`/api/config` and `/api/pipeline/run`) use the FastAPI default error body instead:
+The routes implemented today (all under `/api/`) use the FastAPI default error body instead:
 
 ```json
 {
@@ -294,6 +309,170 @@ A failure inside a stage after the stream has started does not change the HTTP s
 ```
 
 The frontend builds its model list from `allowed_models` and adds a mock option only when `demo_mock` is true.
+
+### Upload Document and Start Run (implemented prototype)
+
+| Item | Detail |
+| --- | --- |
+| Method | `POST` |
+| Route | `/api/documents` |
+| Purpose | Store one article and start its pipeline run in the background. One upload is one article. |
+| Success status | `202 ACCEPTED` |
+
+**Request** (`multipart/form-data`)
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `file` | Yes | The article as a PDF, or a single page as PNG or JPEG. |
+| `model` | No | Same rules as `model` on `/api/pipeline/run`. |
+
+```http
+POST /api/documents
+Content-Type: multipart/form-data
+
+file=1950_07_002.pdf
+model=google/gemini-2.5-flash
+```
+
+**Response example**
+
+```json
+{
+  "document_id": "893f5cf1d2e84fe2955d3f6d0c57203e",
+  "run_id": "3471e7711f8c49ebb333929123c4c061",
+  "status": "pending",
+  "file_type": "pdf",
+  "page_count": 4,
+  "status_url": "/api/runs/3471e7711f8c49ebb333929123c4c061",
+  "events_url": "/api/runs/3471e7711f8c49ebb333929123c4c061/events"
+}
+```
+
+`status` is `pending` or `running`, depending on whether the job has already started.
+
+**Validation rules**
+
+- The file type is decided from the first bytes of the content (PDF, PNG, JPEG). The file name and the `Content-Type` header are ignored.
+- The file may be at most `MAX_UPLOAD_MB` megabytes (default 25). A request whose `Content-Length` is clearly over the limit is refused before the body is read.
+- The document must open and may have at most `MAX_UPLOAD_PAGES` pages (default 30).
+- The model and key checks are the same as for `/api/pipeline/run`, and they run before anything is stored.
+- The OCR provider is chosen on the server with `OCR_PROVIDER`. The client cannot choose it.
+
+**Errors**
+
+| Status | When |
+| --- | --- |
+| `400` | The content is not a PDF, PNG or JPEG, or the model is not on the allowlist. |
+| `413` | The file is larger than `MAX_UPLOAD_MB`, or the document has more than `MAX_UPLOAD_PAGES` pages. |
+| `422` | The file has an accepted type but cannot be opened (damaged or password-protected PDF, damaged image), or the `file` field is missing. |
+| `503` | Live LLM calls are not available (same rule as `/api/pipeline/run`), or `OCR_PROVIDER` names an unknown provider. |
+
+Nothing is stored when the request is rejected.
+
+### Get Run (implemented prototype)
+
+| Item | Detail |
+| --- | --- |
+| Method | `GET` |
+| Route | `/api/runs/{run_id}` |
+| Purpose | Status, stage statuses and outputs of one run. |
+| Success status | `200 OK` |
+
+**Response example** (shortened)
+
+```json
+{
+  "run_id": "3471e7711f8c49ebb333929123c4c061",
+  "document_id": "893f5cf1d2e84fe2955d3f6d0c57203e",
+  "file_name": "1950_07_002.pdf",
+  "file_type": "pdf",
+  "page_count": 4,
+  "status": "needs_review",
+  "created_at": "2026-10-12T03:15:02+00:00",
+  "started_at": "2026-10-12T03:15:02+00:00",
+  "finished_at": "2026-10-12T03:15:41+00:00",
+  "model": "google/gemini-2.5-flash",
+  "mode": "live",
+  "ocr_provider": "tesseract",
+  "stages": {
+    "render": {"status": "completed", "duration": 1.9, "error": null, "attempts": 1, "pages": 4, "dpi": 300},
+    "ocr": {"status": "completed", "duration": 21.4, "error": null, "provider": "tesseract", "pages": 4, "failed_pages": [], "mean_confidence": 0.61},
+    "romanisation": {"status": "completed", "duration": 2.2, "method_a": {}, "method_b": {}},
+    "agreement_gate": {"status": "flagged", "gate_status": "flagged", "agreement": 0.71, "threshold": 0.85, "reason": "..."},
+    "translation": {"status": "completed", "duration": 6.3, "error": null, "attempts": 1},
+    "summary": {"status": "completed", "duration": 2.8, "error": null, "attempts": 1},
+    "knowledge": {"status": "completed", "duration": 3.1, "error": null, "attempts": 1}
+  },
+  "incomplete_stages": [],
+  "needs_human_review": true,
+  "error": null,
+  "outputs": {
+    "ocr_text": "...",
+    "ocr_mean_confidence": 0.61,
+    "ocr_pages": [
+      {
+        "page": 1,
+        "status": "completed",
+        "error": null,
+        "duration": 5.2,
+        "mean_confidence": 0.63,
+        "lines": [{"text": "...", "box": [112, 80, 1490, 52], "confidence": 0.66}]
+      }
+    ],
+    "romanisation": {"text": "...", "method_a": {}, "method_b": {}, "agreement_gate": {}, "needs_human_review": true},
+    "translation": "...",
+    "summary": "...",
+    "knowledge": {"people": [], "places": [], "dates": [], "organizations": [], "themes": [], "key_claims": [], "evidence": []}
+  }
+}
+```
+
+**Run status**
+
+| `status` | Meaning |
+| --- | --- |
+| `pending` | Stored and waiting for a free worker. |
+| `running` | Stages are being processed. |
+| `completed` | Every stage completed and the agreement gate passed. |
+| `needs_review` | The run finished, but at least one stage was incomplete or the agreement gate did not pass. `incomplete_stages` lists the stages. |
+| `failed` | No OCR text was produced, so the agent stages were skipped. Also used when an unexpected error stopped the run, or the server restarted before the run finished. `error` explains why. |
+
+**Stage status** (`stages.<name>.status`)
+
+| Value | Meaning |
+| --- | --- |
+| `pending`, `running` | Not started yet, or in progress. |
+| `completed` | The stage produced its output. |
+| `incomplete` | The stage failed and the Runtime Fault Handler passed the last valid output through. |
+| `flagged` | Agreement gate only: methods A and B agree below the threshold. |
+| `skipped` | The stage did not run. `reason` says why. |
+
+The stages are always `render`, `ocr`, `romanisation`, `agreement_gate`, `translation`, `summary` and `knowledge`. `incomplete_stages` uses the same names, except that romanisation is reported per method (`romanisation_method_a`, `romanisation_method_b`), as on the text endpoint.
+
+In `ocr_pages`, `box` is `[left, top, width, height]` in pixels of the page image, and `confidence` is between 0 and 1. Both are `null` when the provider cannot supply them (the fixture provider). `outputs` is filled in as the stages finish, so a running run has only some of its keys.
+
+**Errors:** `404` when the run does not exist.
+
+### Stream Run Events (implemented prototype)
+
+| Item | Detail |
+| --- | --- |
+| Method | `GET` |
+| Route | `/api/runs/{run_id}/events` |
+| Purpose | Server-Sent Events for one run. Replays every event from the start, then follows the run until it finishes. |
+| Success status | `200 OK` (`text/event-stream`) |
+
+A client may connect at any time, including after the run has finished, and always receives the full sequence. The event shapes are the ones used by `/api/pipeline/run`, with these additions:
+
+| Event `type` | Difference from the text endpoint |
+| --- | --- |
+| `agent_start`, `agent_done` | `agent` may also be `render` or `ocr`. For `render`, `result` is `{"pages", "dpi"}`. For `ocr`, `result` is the article OCR text, and the event also has `provider`, `mean_confidence` and a `pages` list of `{page, status, lines, mean_confidence}`. |
+| `agent_skipped` | Also sent for `ocr` when no page was rendered, and for the four agents when there is no OCR text. |
+| `pipeline_done` | Also has `run_id`, `status` (the final run status) and `error`. It is always the last event. |
+
+Events arrive in stage order: `render`, `ocr`, `orchestrator_decision`, then the agent events as on the text endpoint. A comment line (`: keep-alive`) is sent every 15 seconds while a stage is still working.
+
+**Errors:** `404` when the run does not exist.
 
 ### Run Individual Agent
 

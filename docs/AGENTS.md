@@ -54,12 +54,12 @@ The stack above is the target. This is what exists in the repo today. Keep this 
 
 - Dataset: only issues 1950_11 and 1950_12 have human-corrected ground truth. Issues 1950_07, 1950_09 and 1950_10 are uncorrected and are excluded unless corrected text arrives.
 - Dataset split: by article into train, validation and test, not by issue. Line count is TBD from the annotation export.
-- TrOCR: no training or inference code in this repo yet.
+- TrOCR: no training or inference code in this repo yet. OCR for uploads runs behind an `OCRProvider` interface (`ocr_providers.py`) with a Tesseract baseline and a fixture provider; TrOCR will be added as another provider.
 - Agent pipeline: implemented in `pipeline_runner.py` with Method A/B romanisation, agreement gate, fault handler, and concurrent summarisation and knowledge extraction.
 - LangChain: not used in code yet. Agents call OpenRouter directly through `llm_text_runtime.py`.
 - Frontend: a single static `frontend/index.html`, not a React app yet.
-- Backend: FastAPI app in `backend/main.py` with a health route, a config route and the streaming pipeline route.
-- Supabase: not implemented in code yet. The CLI runner writes results to local files under `output/`.
+- Backend: FastAPI app in `backend/main.py` with a health route, a config route, the streaming pipeline route, a document upload route, and run status and event routes. Uploads are processed by a background job runner (`job_runner.py`).
+- Supabase: not implemented in code yet. The CLI runner writes results to local files under `output/`. Uploads and run records are stored locally under `storage/` behind a `Storage` interface (`document_storage.py`).
 
 ## Forbidden Changes
 

@@ -54,7 +54,7 @@ def _load_json_record(path: Path) -> OCRInputRecord:
 
 def _load_text_record(path: Path) -> OCRInputRecord:
     content = path.read_text(encoding="utf-8")
-    body, metadata = _parse_ocr_output_text(content)
+    body, metadata = parse_ocr_output_text(content)
     provider = _infer_provider(path, metadata, content)
     source_file = metadata.get("source_file") or str(path)
     return OCRInputRecord(
@@ -87,7 +87,7 @@ def _load_image_with_tesseract(path: Path, requested_provider: str) -> OCRInputR
     )
 
 
-def _parse_ocr_output_text(content: str) -> tuple[str, dict[str, str]]:
+def parse_ocr_output_text(content: str) -> tuple[str, dict[str, str]]:
     metadata: dict[str, str] = {}
     if "=== Metadata ===" not in content:
         return content.strip(), metadata

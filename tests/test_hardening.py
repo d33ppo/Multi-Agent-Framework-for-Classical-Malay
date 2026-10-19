@@ -15,9 +15,7 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
-import romanisation_agent
 from backend.main import DEFAULT_MAX_TEXT_CHARS, app, cors_origins
-from jawi_dictionary import JawiRumiDictionary
 from llm_text_runtime import (
     DEFAULT_MODEL,
     LLMNotConfiguredError,
@@ -25,6 +23,7 @@ from llm_text_runtime import (
     allowed_models,
     default_model,
 )
+from tests.support import LIVE, EnvTestCase, FakeNeural, FakeResponse, fake_openrouter, make_dictionary
 
 try:  # imported here, not inside tests, so their .env loading happens before setUp cleans the environment
     import ocr_jawi
@@ -32,71 +31,7 @@ try:  # imported here, not inside tests, so their .env loading happens before se
 except ImportError:  # OCR extras (pytesseract, opencv) not installed
     ocr_jawi = ocr_llm = None
 
-CONTROLLED_ENV = (
-    "OPENROUTER_API_KEY",
-    "ALLOW_EXTERNAL_MANUSCRIPT_API",
-    "APP_MODE",
-    "OPENROUTER_ALLOWED_MODELS",
-    "OPENROUTER_MODEL",
-    "OPENROUTER_MAX_TOKENS",
-    "OPENROUTER_VISION_MODEL",
-    "MAX_TEXT_CHARS",
-    "CORS_ALLOWED_ORIGINS",
-    "TESSERACT_CMD",
-)
-LIVE = {"OPENROUTER_API_KEY": "test-key-not-real", "ALLOW_EXTERNAL_MANUSCRIPT_API": "true"}
 JAWI = "ايبو ڤد"
-KNOWLEDGE_JSON = json.dumps(
-    {"people": [], "places": [], "dates": [], "organizations": [], "themes": ["ujian"], "key_claims": []}
-)
-
-
-class FakeResponse:
-    """Stands in for an OpenRouter HTTP response."""
-
-    def __init__(self, text, status_code=200):
-        self.text = text
-        self.status_code = status_code
-
-    def json(self):
-        return {"model": "fake", "choices": [{"finish_reason": "stop", "message": {"content": self.text}}]}
-
-
-def fake_openrouter(_url, **kwargs):
-    """Answer each agent by looking at its system prompt (summary and knowledge run concurrently)."""
-    system_prompt = kwargs["json"]["messages"][0]["content"]
-    if "translator" in system_prompt:
-        return FakeResponse("ibu pada masa dahulu")
-    if "summarise" in system_prompt:
-        return FakeResponse("Ringkasan ujian.")
-    return FakeResponse(KNOWLEDGE_JSON)
-
-
-class FakeNeural:
-    def romanise(self, jawi_text):
-        return "ibu pada"
-
-
-def make_dictionary():
-    return JawiRumiDictionary({"ايبو": {"ibu": 500}, "ڤد": {"pada": 9000}})
-
-
-class EnvTestCase(unittest.TestCase):
-    """Clean configuration for every test, and a network call that fails loudly if reached."""
-
-    def setUp(self):
-        env = mock.patch.dict(os.environ)
-        env.start()
-        self.addCleanup(env.stop)
-        for name in CONTROLLED_ENV:
-            os.environ.pop(name, None)
-
-        post = mock.patch("requests.post", side_effect=AssertionError("unexpected network call"))
-        self.post = post.start()
-        self.addCleanup(post.stop)
-
-    def answer_with(self, responder):
-        self.post.side_effect = responder
 
 
 class RuntimeConfigTests(EnvTestCase):
@@ -149,13 +84,8 @@ class ApiHardeningTests(EnvTestCase):
     def setUp(self):
         super().setUp()
         # Keep romanisation local and tiny: no dictionary file, no HuggingFace download.
-        for name, replacement in (
-            ("default_dictionary", make_dictionary),
-            ("default_neural_romaniser", FakeNeural),
-        ):
-            patcher = mock.patch.object(romanisation_agent, name, replacement)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        self.patch("romanisation_agent.default_dictionary", make_dictionary)
+        self.patch("romanisation_agent.default_neural_romaniser", FakeNeural)
         self.client = TestClient(app)
 
     def run_pipeline(self, text=JAWI, **body):

@@ -43,9 +43,15 @@ JAWI_NEURAL_MODEL=mesolitica/jawi-nanot5-small-malaysian-cased
 OCR_MODEL_PATH=
 OCR_CONFIDENCE_THRESHOLD=0.60
 MAX_UPLOAD_MB=25
+MAX_UPLOAD_PAGES=30
+PDF_RENDER_DPI=300
+OCR_PROVIDER=tesseract
+OCR_FIXTURE_DIR=data/ocr_fixtures
+STORAGE_DIR=storage
+JOB_WORKERS=1
 ```
 
-The list above includes variables planned for Supabase, upload limits and the OCR model. The variables the code reads today are listed in `.env.example` at the repository root; copy it to `.env` to start.
+The list above includes variables planned for Supabase and the fine-tuned OCR model. The variables the code reads today are listed in `.env.example` at the repository root; copy it to `.env` to start.
 
 ### Backend Safety Settings
 
@@ -66,6 +72,32 @@ These variables are read by the code today. A variable that is set but empty cou
 To run the live pipeline, set both `OPENROUTER_API_KEY` and `ALLOW_EXTERNAL_MANUSCRIPT_API=true`. Set the flag to `true` only if manuscript data is allowed to leave the machine.
 
 The command-line runner (`pipeline_runner.py`) is a development tool. When live calls are not available it prints a notice and runs the agents in mock mode. The API does not do this unless `APP_MODE=demo_mock` is set.
+
+### Upload and Run Settings
+
+These variables are read by the document upload route and the background job runner.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `MAX_UPLOAD_MB` | `25` | Largest file accepted by `POST /api/documents`. Larger files are rejected with `413`. |
+| `MAX_UPLOAD_PAGES` | `30` | Most pages one uploaded document may have. More pages are rejected with `413`. |
+| `PDF_RENDER_DPI` | `300` | Resolution used to render PDF pages to PNG images for OCR. |
+| `OCR_PROVIDER` | `tesseract` | `tesseract` runs the local Tesseract baseline. `fixture` reads saved text instead of running a model. |
+| `OCR_FIXTURE_DIR` | `data/ocr_fixtures` | Folder read by the fixture provider. |
+| `STORAGE_DIR` | `storage` | Folder for uploads, rendered pages, OCR output and run records. It is listed in `.gitignore`. |
+| `JOB_WORKERS` | `1` | Number of uploaded documents processed at the same time. Extra uploads wait. |
+
+Run the backend as a single process (the default for `python run_server.py` and plain `uvicorn`). Runs are kept in the memory of the process that started them, so several worker processes would not see each other's runs. A run that is in progress when the server stops or reloads is reported as `failed`.
+
+**Fixture provider file names.** For an upload named `1950_07_002.pdf`, page 1 is read from `1950_07_002_1.txt` (or `1950_07_002_p1.txt`), page 2 from `1950_07_002_2.txt`, and so on. A one-page upload such as `1950_07_002_1.png` may also use `1950_07_002_1.txt`. Each non-empty line of the file becomes one OCR line.
+
+**Trying an upload from the command line.**
+
+```bash
+curl -F "file=@data/input/jawi_image_data/1950_07_002_1.png" http://localhost:8000/api/documents
+curl http://localhost:8000/api/runs/<run_id>
+curl -N http://localhost:8000/api/runs/<run_id>/events
+```
 
 ## Romanisation Method B Dictionary
 
@@ -218,7 +250,11 @@ Demo flow:
 
 | Issue | Possible Cause | Fix |
 | --- | --- | --- |
-| Upload fails | Unsupported file type or file too large. | Check file extension and `MAX_UPLOAD_MB`. |
+| Upload fails with `400` | The content is not a PDF, PNG or JPEG. The type is read from the file content, not its name. | Upload a real PDF, PNG or JPEG. |
+| Upload fails with `413` | File larger than `MAX_UPLOAD_MB`, or more pages than `MAX_UPLOAD_PAGES`. | Upload one article at a time, or raise the limit. |
+| Upload fails with `422` | The PDF or image is damaged or password protected. | Export the file again. |
+| Run ends as `failed` with "No OCR text was produced" | The OCR provider returned nothing: Tesseract was not found, or no fixture file matches the upload name. | Read the `error` field of the run. Set `TESSERACT_CMD`, or check `OCR_FIXTURE_DIR` and the fixture file names. |
+| Run is `failed` with "The server restarted" | The backend stopped or reloaded while the run was in progress. | Upload the document again. |
 | OCR returns empty text | Image unreadable or preprocessing failed. | Try clearer scan or manual reference. |
 | OCR confidence is low | Scan quality or model limitation. | Mark for review and avoid treating downstream output as final. |
 | API returns `503` on `/api/pipeline/run` | `OPENROUTER_API_KEY` is missing, or `ALLOW_EXTERNAL_MANUSCRIPT_API` is not `true`. | Set both in `.env` and restart the backend, or set `APP_MODE=demo_mock` for a mock demo. |

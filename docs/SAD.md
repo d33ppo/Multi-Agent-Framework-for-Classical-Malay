@@ -122,7 +122,71 @@ Method A and Method B run in parallel on the same OCR text. Translation must fin
 7. The Runtime Fault Handler wraps every stage: on exception, timeout, or empty output it logs the incident, passes the last valid output through, and marks the stage incomplete. The three LLM stages (Translation, Summarisation, Knowledge Extraction) are retried up to 2 times before that happens. See "Runtime Fault Handler Behaviour" below.
 8. Flagged or incomplete items are shown to the user and require human review before being used as final evidence.
 
-The same stage order is implemented once in `pipeline_runner.iter_agent_pipeline` and reused by the CLI runner and the FastAPI streaming endpoint.
+The same stage order is implemented once in `pipeline_runner.iter_agent_pipeline` and reused by the CLI runner, the FastAPI streaming endpoint, and the upload job runner.
+
+Steps 1 to 5 describe the planned Supabase-backed flow. What is implemented today for uploads is described in "Upload and Run Pipeline" below.
+
+## Upload and Run Pipeline
+
+Implemented in `backend/main.py`, `job_runner.py`, `pdf_render.py`, `ocr_providers.py` and `document_storage.py`.
+
+**Unit of work.** One upload is one article: a PDF with one or more pages, or a single page as PNG or JPEG. OCR runs page by page. The page texts are then joined in page order, and the agent stages run once on the whole article text.
+
+```mermaid
+flowchart LR
+    U[POST /api/documents] --> V{Type, size, pages, model, key}
+    V -- rejected --> E[400 / 413 / 422 / 503, nothing stored]
+    V -- accepted --> S[(Storage)]
+    S --> Q[Job runner thread pool]
+    Q --> R[render: PyMuPDF to page PNGs]
+    R --> O[ocr: OCRProvider per page]
+    O --> A[iter_agent_pipeline: romanisation, gate, translation, summary + knowledge]
+    A --> F[Run record: status, stages, outputs]
+    Q -. events .-> SSE[GET /api/runs/id/events]
+    F --> G[GET /api/runs/id]
+```
+
+**Stages.** A run always has seven stages: `render`, `ocr`, `romanisation`, `agreement_gate`, `translation`, `summary`, `knowledge`. Each one goes through the Runtime Fault Handler and its status, duration, error and attempts are recorded on the run.
+
+| Stage | What it does | If it fails |
+| --- | --- | --- |
+| `render` | PyMuPDF renders each PDF page to a PNG at `PDF_RENDER_DPI` (default 300). An image upload becomes one page at its own resolution. | No pages exist, so OCR is skipped and the run ends as `failed`. |
+| `ocr` | The OCR provider reads each page and returns lines of `{box, text, confidence}`. | A failed page is left out and the stage is marked incomplete; the other pages still count. If no page gives any text, the agent stages are skipped and the run ends as `failed`. |
+| `romanisation` to `knowledge` | Unchanged agent pipeline, see "Coordination Logic". | As described under "Failure Handling". The run continues and ends as `needs_review`. |
+
+**Run status.** `pending`, `running`, then one of: `completed` (every stage completed and the gate passed), `needs_review` (finished, but a stage was incomplete or the gate did not pass), or `failed` (no OCR text, an unexpected error, or a server restart). These are the common status values of `DATABASE_SCHEMA.md`. A failing stage never stops a run that still has text to work on.
+
+**OCR provider interface.** `OCRProvider.recognise_page(page)` returns the text lines of one rendered page. The provider is chosen on the server with `OCR_PROVIDER`.
+
+| Provider | Use | Notes |
+| --- | --- | --- |
+| `tesseract` (default) | Baseline OCR, runs locally. | Wraps `ocr_jawi.py`. Words are grouped into lines with a box and a mean confidence. |
+| `fixture` | Tests and demos. | Reads saved text from `OCR_FIXTURE_DIR` instead of running a model. Box and confidence are empty. |
+| Fine-tuned TrOCR | Planned. | Will be added as another provider. The job runner does not change. |
+
+**Original OCR output.** The provider output is saved per page, and the joined article text is saved once, before any agent runs. Storage saves are write-once, so later stages cannot overwrite them. Agents receive the text as input, and their outputs go into the run record.
+
+**Storage interface.** All files go through `Storage` (`save`, `load`, `exists`). `LocalStorage` keeps them under `STORAGE_DIR` (default `storage/`, not committed). Supabase Storage can replace it later without changing the callers.
+
+```text
+storage/
+  documents/{document_id}/original.pdf      the upload, unchanged
+  documents/{document_id}/pages/page_0001.png
+  runs/{run_id}/ocr/page_0001.json          provider output for one page
+  runs/{run_id}/ocr/ocr_text.txt            article OCR text, write-once
+  runs/{run_id}/run.json                    run record and events, rewritten after each stage
+```
+
+**Job runner.** Runs execute on a thread pool inside the API process (`JOB_WORKERS`, default 1). There is no external queue. Extra uploads wait as `pending`. Each run keeps its list of events, so `GET /api/runs/{id}/events` can replay them from the start and then follow the run live.
+
+**Limits of this design.**
+
+- The backend must run as a single process. Runs live in the memory of the process that started them.
+- A run that is in progress when the server stops is lost. Its saved record is reported as `failed` with a message. Finished runs are read back from storage.
+- Only the 50 most recent finished runs are kept in memory; older ones are served from storage.
+- A timed-out stage cannot be cancelled (see "Runtime Fault Handler Behaviour").
+
+**Upload checks.** Before anything is stored: the file type is read from the first bytes of the content (PDF, PNG, JPEG), the size is limited by `MAX_UPLOAD_MB`, the document must open and have at most `MAX_UPLOAD_PAGES` pages, and the same model and key checks as the text endpoint apply. The upload file name is never used as a storage path.
 
 ## Validation Mechanisms
 
@@ -153,7 +217,10 @@ For this reason, the system:
 | Failure Case | System Response |
 | --- | --- |
 | OCR confidence is low | Store OCR output, mark status as `needs_review`, continue only if user allows, and show warning in frontend. |
-| Manuscript image is unreadable | Stop OCR run, store failure in `system_logs`, return `422 UNPROCESSABLE_ENTITY`, and request clearer sample or manual transcription. |
+| Manuscript image is unreadable | Stop OCR run, store failure in `system_logs`, return `422 UNPROCESSABLE_ENTITY`, and request clearer sample or manual transcription. Implemented for uploads: a file that cannot be opened is rejected with `422` and is not stored. |
+| Upload has the wrong type, is too large, or has too many pages | Rejected with `400` or `413` before anything is stored. |
+| OCR fails on a page | That page is left out, the OCR stage is marked incomplete, and the run continues on the other pages and ends as `needs_review`. |
+| No OCR text at all | The agent stages are skipped and the run ends as `failed` with the cause. No LLM call is made. |
 | Any stage raises, times out, or returns empty output | Runtime Fault Handler logs the incident, passes the last valid output through (Method A fails: Method B text; both fail: original OCR text; Translation fails: romanised text), and marks the stage incomplete. LLM stages are retried first when the failure is an exception or a timeout. |
 | Methods A and B disagree (below 85%) | Inter-Method Agreement Gate flags the item for human review; the pipeline continues. |
 | LLM/API response is incomplete | The call raises an error. The Runtime Fault Handler retries it up to 2 times with the same prompt, then passes the last valid output through and marks the stage incomplete. |
@@ -197,6 +264,7 @@ The planned `extracted_knowledge` table uses different field names (`entities`, 
 
 - Manuscript data leaves the machine only when `ALLOW_EXTERNAL_MANUSCRIPT_API=true`. The flag covers the three LLM agents (manuscript text to OpenRouter) and the VLM OCR baseline in `ocr_llm.py` (page images to OpenRouter). It is checked when the runtime is created and again before each call.
 - Romanisation runs locally and sends nothing out. Method A downloads its model weights from HuggingFace on first use.
+- Uploaded documents, rendered pages, OCR output and run records stay on the machine under `STORAGE_DIR`. Both OCR providers used by the upload pipeline (`tesseract`, `fixture`) run locally.
 - The API never substitutes mock text for a live result. Without a key, or without the flag, `POST /api/pipeline/run` returns `503`. Mock output is served only when `APP_MODE=demo_mock` is set, and such runs report `mode: mock`.
 - The client cannot choose an arbitrary model. `OPENROUTER_ALLOWED_MODELS` is the server-side allowlist, and `GET /api/config` exposes it so the frontend offers only those models.
 - CORS origins come from `CORS_ALLOWED_ORIGINS`, and `jawi_text` is limited by `MAX_TEXT_CHARS`.
