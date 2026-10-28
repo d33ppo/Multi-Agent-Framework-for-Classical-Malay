@@ -22,6 +22,10 @@ Metrics, per page and overall:
   (c) detector precision and recall at IoU >= 0.5
   (d) seconds per page (model loading reported separately)
 
+The page PNGs are the 400 DPI renders the models were trained on, the same DPI
+an upload is rendered at for the trocr provider. The DPI is recorded in the
+JSON: --page-dpi as stated, plus the DPI stored in each PNG when it has one.
+
 Outputs in --out-dir: page_eval_<decoding>.json and .csv (metrics only, no
 Qalam text) and predictions_<decoding>.jsonl (texts, gitignored).
 
@@ -50,6 +54,7 @@ for folder in (PROJECT_DIR, PROJECT_DIR / "ocr_training"):
 import stage_metrics  # noqa: E402
 import trocr_dataset as td  # noqa: E402
 import yolo_prefill as yp  # noqa: E402
+from pdf_render import TROCR_RENDER_DPI  # noqa: E402
 
 TASK_OVERRIDES = {1: ("1950_11_002", 0)}  # task 1 has no metadata in the export
 DEFAULT_TEST_ARTICLES = PROJECT_DIR / "ocr_training" / "splits" / "test_articles.json"
@@ -113,6 +118,17 @@ def overall(rows: list[dict]) -> dict:
     }
 
 
+def png_dpi(png: bytes) -> int | None:
+    """The DPI stored in the PNG (pHYs chunk), or None when it has none."""
+    import io
+
+    from PIL import Image
+
+    with Image.open(io.BytesIO(png)) as image:
+        dpi = image.info.get("dpi")
+    return round(dpi[0]) if dpi else None
+
+
 def _git_commit() -> str | None:
     try:
         return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=PROJECT_DIR,
@@ -138,6 +154,8 @@ def main() -> None:
     parser.add_argument("--threads", type=int, help="torch CPU threads (default: OCR_TORCH_THREADS)")
     parser.add_argument("--device", default="cpu", help="cpu (default, for the timing) or cuda")
     parser.add_argument("--limit", type=int, help="evaluate only the first N pages, for a quick check")
+    parser.add_argument("--page-dpi", type=int, default=TROCR_RENDER_DPI,
+                        help=f"DPI the page PNGs were rendered at (default {TROCR_RENDER_DPI}), recorded in the JSON")
     args = parser.parse_args()
 
     from ocr_trocr import TrOCROCRProvider, decode_page
@@ -159,7 +177,8 @@ def main() -> None:
         height, width = decode_page(png).shape[:2]
         gold = gold_lines(p, width, height)
         result, detected = evaluate_page(provider, png, gold)
-        rows.append({"article_id": p["article_id"], "page_index": p["page_index"], **result})
+        rows.append({"article_id": p["article_id"], "page_index": p["page_index"],
+                     "width": width, "height": height, "png_dpi": png_dpi(png), **result})
         predictions.append({
             "article_id": p["article_id"], "page_index": p["page_index"],
             "pred": [{"order": d.order, "xyxy": [round(v, 1) for v in d.xyxy], "text": d.text,
@@ -172,6 +191,9 @@ def main() -> None:
               f"{result['page']['cer']}, P {line['precision']} R {line['recall']}, {result['seconds']}s")
 
     summary = overall(rows)
+    stored_dpis = sorted({r["png_dpi"] for r in rows if r["png_dpi"]})
+    if any(dpi != args.page_dpi for dpi in stored_dpis):
+        print(f"Warning: the PNGs store DPI {stored_dpis}, but --page-dpi is {args.page_dpi}.")
     if summary["gold_lines"] != 641:
         print(f"Note: {summary['gold_lines']} gold lines; the line-level test set has 641.")
     import torch
@@ -185,6 +207,8 @@ def main() -> None:
             "detector_imgsz": provider.imgsz, "detector_conf": 0.35, "iou_threshold": IOU_THRESHOLD,
             "decoding": decoding, "num_beams": provider.num_beams, "batch_size": provider.batch_size,
             "device": args.device, "torch_threads": torch.get_num_threads(), "test_articles": test_articles,
+            "page_dpi": args.page_dpi, "png_stored_dpi": stored_dpis,
+            "upload_render_dpi_for_trocr": TROCR_RENDER_DPI,
             "torch": torch.__version__, "transformers": transformers.__version__, "cpu": platform.processor(),
         },
         "model_load_seconds": load_seconds,

@@ -16,9 +16,11 @@ import numpy as np
 
 import ocr_trocr
 import stage_metrics
+from jawi_dictionary import JawiRumiDictionary
 from ocr_providers import FixtureOCRProvider, PageImage, TesseractOCRProvider, build_ocr_provider
 from ocr_trocr import TrOCROCRProvider, TrOCRRecogniser, line_crop, mean_logprob_confidence, normalise_output
-from tests.support import TempDirTestCase
+from pdf_render import render_dpi
+from tests.support import TempDirTestCase, make_pdf
 from tests.test_upload_jobs import UploadTestCase
 
 td, yp = ocr_trocr.td, ocr_trocr.yp
@@ -333,6 +335,60 @@ class UploadWithTrOCRTests(UploadTestCase):
         lines = run["outputs"]["ocr_pages"][0]["lines"]
         self.assertEqual([(line["order"], line["low_confidence"]) for line in lines], [(1, False), (2, True)])
         self.assertEqual(run["status"], "completed")  # the uncalibrated flag does not change the run status
+
+    def test_pdf_upload_is_rendered_at_400_dpi_for_trocr(self):
+        # TrOCR writes the 1950 print's ف for /p/, never ڤ; Method B must still read it.
+        provider, detector, _ = provider_with(column(100, 1000, [100, 150]), [("ايبو فد ايبو فد ايبو", 0.9),
+                                                                              ("فد ايبو فد ايبو فد", 0.9)])
+        self.patch("backend.main.build_ocr_provider", lambda: provider)
+        run = self.finished_run(self.upload(make_pdf(pages=1)))
+
+        self.assertEqual(run["stages"]["render"]["dpi"], 400)
+        self.assertEqual(run["stages"]["ocr"]["render_dpi"], 400)
+        height, width = detector.calls[0]["image"].shape[:2]
+        self.assertAlmostEqual(width, 200 * 400 / 72, delta=1)  # a 200 x 100 pt page at 400 DPI
+        self.assertAlmostEqual(height, 100 * 400 / 72, delta=1)
+        self.assertNotIn("ڤ", run["outputs"]["ocr_text"])
+        self.assertEqual(run["outputs"]["romanisation"]["text"], "ibu pada ibu pada ibu\npada ibu pada ibu pada")
+        self.assertEqual(run["status"], "completed")
+
+    def test_pdf_render_dpi_setting_still_wins_and_images_keep_their_resolution(self):
+        os.environ["PDF_RENDER_DPI"] = "300"
+        provider, _, _ = provider_with(column(100, 1000, [100]), [("ايبو فد ايبو فد ايبو", 0.9)])
+        self.patch("backend.main.build_ocr_provider", lambda: provider)
+        run = self.finished_run(self.upload(make_pdf(pages=1)))
+        self.assertEqual((run["stages"]["render"]["dpi"], run["stages"]["ocr"]["render_dpi"]), (300, 300))
+
+        run = self.finished_run(self.upload(page_png(), name="page.png"))
+        self.assertEqual((run["stages"]["render"]["dpi"], run["stages"]["ocr"]["render_dpi"]), (None, None))
+
+
+class RenderDpiTests(TempDirTestCase):
+    def test_trocr_pages_are_rendered_at_the_training_dpi_unless_configured(self):
+        self.assertEqual((render_dpi(), render_dpi("tesseract"), render_dpi("trocr")), (300, 300, 400))
+        os.environ["PDF_RENDER_DPI"] = "250"
+        self.assertEqual(render_dpi("trocr"), 250)
+
+
+class TrOCRToMethodBTests(TempDirTestCase):
+    """TrOCR output keeps the 1950 spelling (ف for /p/), which modern-Jawi Method B data writes as ڤ."""
+
+    def test_trocr_style_jawi_romanises_through_the_old_spelling_retry(self):
+        dictionary = JawiRumiDictionary({"ڤد": {"pada": 9000}, "هيدوڤ": {"hidup": 600}, "ايبو": {"ibu": 500}})
+        provider, _, _ = provider_with(column(100, 1000, [100, 150]), [(normalise_output("ايبو  فد\n"), 0.9),
+                                                                       (normalise_output("هيدوف"), 0.9)])
+        lines = provider.recognise_page(page(page_png()))
+        ocr_text = "\n".join(line.text for line in lines)
+        self.assertEqual(ocr_text, "ايبو فد\nهيدوف")
+        self.assertNotIn("ڤ", ocr_text)
+
+        output = dictionary.romanise(ocr_text)
+        self.assertEqual(output.text, "ibu pada\nhidup")
+        rules = {word.jawi: (word.rumi, word.status, word.rule) for word in output.words}
+        self.assertEqual(rules["فد"], ("pada", "known", "fa_to_pa"))
+        self.assertEqual(rules["هيدوف"], ("hidup", "known", "fa_to_pa"))
+        self.assertEqual(rules["ايبو"], ("ibu", "known", "exact"))
+        self.assertEqual(output.unknown_words, [])
 
 
 class PageMetricTests(TempDirTestCase):

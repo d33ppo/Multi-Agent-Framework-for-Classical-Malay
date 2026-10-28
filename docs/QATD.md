@@ -74,6 +74,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | OCR-14 | TrOCR decoding and confidence | Run real `generate()` on a tiny random model built in memory, greedy and beam. | One text and one confidence between 0 and 1 per crop, in batches of `OCR_BATCH_SIZE`, with `use_cache` on. Greedy confidence stops at the first end token. Output gets NFC and whitespace collapse but not `LABEL_MAP`. |  |
 | OCR-15 | Provider selection | Set and unset `OCR_MODEL_PATH` and `OCR_PROVIDER`; point the model or detector path at a missing file. | `trocr` is the default once `OCR_MODEL_PATH` is set, `OCR_PROVIDER` still wins, and a missing file is a configuration error (`503` on upload). |  |
 | OCR-16 | Low-confidence lines | Upload a page where one TrOCR line is below the threshold. | The line has `low_confidence: true` and `stages.ocr.low_confidence_lines` is 1. The run status is not changed by the flag while the threshold is uncalibrated. |  |
+| OCR-18 | Render resolution for TrOCR | Upload a PDF with the `trocr` provider, with and without `PDF_RENDER_DPI`. | Unset: pages are rendered at 400 DPI and `stages.render.dpi` and `stages.ocr.render_dpi` are 400. `PDF_RENDER_DPI` overrides it. An image upload records `null`. |  |
 | OCR-17 | Page-level OCR evaluation | Run `scripts/eval_page_cer.py` on the locked test articles; unit-test the metric functions. | Matched-line CER counts missed gold lines as full deletions and extra lines as full insertions. Page CER, detector precision and recall, and seconds per page are reported per page and overall. |  |
 
 ## Agent Pipeline Test Cases
@@ -107,6 +108,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | ROM-06 | Methods disagree | Mock A and B with different output. | Gate flags the item for human review; pipeline continues. |  |
 | ROM-07 | Method A fails | Mock neural model error. | Method B text is passed through; gate is skipped; stage marked incomplete. |  |
 | ROM-08 | Compare to gold standard | Run `stage_metrics.py romanisation` against Qalam romanised PDFs. | BLEU and chrF are recorded. |  |
+| ROM-09 | TrOCR spelling into Method B | Romanise TrOCR-style Jawi that uses ف for /p/ and no ڤ. | Method B finds the modern ڤ entries through the `fa_to_pa` old-spelling retry and no word is unknown. |  |
 
 ## Translation Test Cases
 

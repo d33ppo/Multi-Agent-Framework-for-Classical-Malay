@@ -47,7 +47,7 @@ OCR_NUM_BEAMS=1
 OCR_CONFIDENCE_THRESHOLD=0.60
 MAX_UPLOAD_MB=25
 MAX_UPLOAD_PAGES=30
-PDF_RENDER_DPI=300
+PDF_RENDER_DPI=
 OCR_PROVIDER=
 OCR_FIXTURE_DIR=data/ocr_fixtures
 STORAGE_DIR=storage
@@ -84,7 +84,7 @@ These variables are read by the document upload route and the background job run
 | --- | --- | --- |
 | `MAX_UPLOAD_MB` | `25` | Largest file accepted by `POST /api/documents`. Larger files are rejected with `413`. |
 | `MAX_UPLOAD_PAGES` | `30` | Most pages one uploaded document may have. More pages are rejected with `413`. |
-| `PDF_RENDER_DPI` | `300` | Resolution used to render PDF pages to PNG images for OCR. |
+| `PDF_RENDER_DPI` | `400` for `trocr`, `300` otherwise | Resolution used to render PDF pages to PNG images for OCR. When unset it follows the OCR provider: the TrOCR model and the YOLO line detector were trained on 400 DPI pages, so `trocr` gets 400. Setting it overrides this for every provider. The DPI is recorded in `stages.render.dpi` and `stages.ocr.render_dpi`. Image uploads keep their own resolution and record `null`. |
 | `OCR_PROVIDER` | see note | `trocr` runs the fine-tuned TrOCR model, `tesseract` runs the local Tesseract baseline, `fixture` reads saved text instead of running a model. When unset: `trocr` if `OCR_MODEL_PATH` is set, otherwise `tesseract`. |
 | `OCR_FIXTURE_DIR` | `data/ocr_fixtures` | Folder read by the fixture provider. |
 | `OCR_MODEL_PATH` | empty | Folder with the fine-tuned TrOCR model and processor, for example `models/trocr_v1`. Setting it makes `trocr` the default provider. |
@@ -205,9 +205,11 @@ models/
     qalam_lines_cpu25.pt     the line detector, trained at imgsz 960
 ```
 
-Then set `OCR_MODEL_PATH=models/trocr_v1` in `.env`. Uploads now use the `trocr` provider. `LINE_DETECTOR_PATH` defaults to the path above and `LINE_DETECTOR_IMGSZ` to 960. Install `ultralytics` and `transformers` from `requirements.txt`. Both models load from local files only and are loaded once, on the first uploaded page, so the first page takes longer.
+Then set `OCR_MODEL_PATH=models/trocr_v1` in `.env`. Uploads now use the `trocr` provider, and PDF pages are rendered at 400 DPI, the resolution both models were trained on (leave `PDF_RENDER_DPI` unset). A PNG or JPEG upload is not rescaled, so it should be a scan at about 400 DPI; at a much lower resolution the line boxes and crops differ from what the models saw in training. `LINE_DETECTOR_PATH` defaults to the path above and `LINE_DETECTOR_IMGSZ` to 960. Install `ultralytics` and `transformers` from `requirements.txt`. Both models load from local files only and are loaded once, on the first uploaded page, so the first page takes longer.
 
 If a model file is missing, uploads return `503` with the missing path. Set `OCR_PROVIDER=tesseract` to run the baseline instead.
+
+**Licence of the line detector library.** `ultralytics` (used to load and run the YOLO line detector) is licensed under AGPL-3.0. Running it locally for this FYP prototype and its evaluation is fine. If the application were distributed, or offered to other people as a network service, AGPL-3.0 would require making the complete source of the application available under the same licence, unless an Ultralytics Enterprise licence is obtained. Check this with the supervisor before any deployment beyond the local demo. The other OCR dependencies (`transformers`, `torch`, OpenCV, PyMuPDF) are not affected by this note; PyMuPDF has its own AGPL-3.0 or commercial licence terms.
 
 ### Page-level OCR Evaluation
 
@@ -217,7 +219,7 @@ If a model file is missing, uploads return `503` with the missing path. Set `OCR
 python scripts/eval_page_cer.py --export exports/<label_studio_export>.json --pages-base <dataset folder with <article>/pages/page_NN.png>
 ```
 
-It runs on CPU by default so the seconds per page are comparable. `--limit 2` evaluates two pages for a quick check. Results go to `ocr_training/results/page_eval_v1/`: `page_eval_greedy.json` (metrics only, can be committed), `page_eval_greedy.csv` and `predictions_greedy.jsonl` (texts, ignored by git).
+The page PNGs should be the 400 DPI renders used for training, which is also the DPI an upload is rendered at for `trocr`. `--page-dpi` (default 400) is recorded in the JSON together with the DPI stored in the PNG files, and the script warns when they differ. It runs on CPU by default so the seconds per page are comparable. `--limit 2` evaluates two pages for a quick check. Results go to `ocr_training/results/page_eval_v1/`: `page_eval_greedy.json` (metrics only, can be committed), `page_eval_greedy.csv` and `predictions_greedy.jsonl` (texts, ignored by git).
 
 ## Run Commands
 

@@ -396,7 +396,7 @@ Nothing is stored when the request is rejected.
   "ocr_provider": "tesseract",
   "stages": {
     "render": {"status": "completed", "duration": 1.9, "error": null, "attempts": 1, "pages": 4, "dpi": 300},
-    "ocr": {"status": "completed", "duration": 21.4, "error": null, "provider": "tesseract", "pages": 4, "failed_pages": [], "mean_confidence": 0.61, "low_confidence_lines": 0},
+    "ocr": {"status": "completed", "duration": 21.4, "error": null, "provider": "tesseract", "pages": 4, "failed_pages": [], "mean_confidence": 0.61, "low_confidence_lines": 0, "render_dpi": 300},
     "romanisation": {"status": "completed", "duration": 2.2, "method_a": {}, "method_b": {}},
     "agreement_gate": {"status": "flagged", "gate_status": "flagged", "agreement": 0.71, "threshold": 0.85, "reason": "..."},
     "translation": {"status": "completed", "duration": 6.3, "error": null, "attempts": 1},
@@ -449,7 +449,7 @@ Nothing is stored when the request is rejected.
 
 The stages are always `render`, `ocr`, `romanisation`, `agreement_gate`, `translation`, `summary` and `knowledge`. `incomplete_stages` uses the same names, except that romanisation is reported per method (`romanisation_method_a`, `romanisation_method_b`), as on the text endpoint.
 
-In `ocr_pages`, `box` is `[left, top, width, height]` in pixels of the page image, and `confidence` is between 0 and 1. Both are `null` when the provider cannot supply them (the fixture provider). `order` is the 1-based reading-order position of the line among the detected boxes, and `low_confidence` is true when `confidence` is below `OCR_CONFIDENCE_THRESHOLD`. Only the `trocr` provider fills these two; the others return `null`. The threshold is not calibrated yet, so `low_confidence` does not change the run status. `stages.ocr.low_confidence_lines` counts the flagged lines. `outputs` is filled in as the stages finish, so a running run has only some of its keys.
+In `ocr_pages`, `box` is `[left, top, width, height]` in pixels of the page image, and `confidence` is between 0 and 1. Both are `null` when the provider cannot supply them (the fixture provider). `order` is the 1-based reading-order position of the line among the detected boxes, and `low_confidence` is true when `confidence` is below `OCR_CONFIDENCE_THRESHOLD`. Only the `trocr` provider fills these two; the others return `null`. The threshold is not calibrated yet, so `low_confidence` does not change the run status. `stages.ocr.low_confidence_lines` counts the flagged lines. `stages.ocr.render_dpi` is the DPI the pages were rendered at for OCR (the same as `stages.render.dpi`: 400 for `trocr` and 300 for other providers unless `PDF_RENDER_DPI` is set, `null` for an image upload). `outputs` is filled in as the stages finish, so a running run has only some of its keys.
 
 **Errors:** `404` when the run does not exist.
 

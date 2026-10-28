@@ -187,7 +187,7 @@ flowchart LR
 
 | Stage | What it does | If it fails |
 | --- | --- | --- |
-| `render` | PyMuPDF renders each PDF page to a PNG at `PDF_RENDER_DPI` (default 300). An image upload becomes one page at its own resolution. | No pages exist, so OCR is skipped and the run ends as `failed`. |
+| `render` | PyMuPDF renders each PDF page to a PNG at `PDF_RENDER_DPI`. When it is unset the DPI follows the OCR provider: 400 for `trocr` (the DPI its models were trained on), 300 otherwise. An image upload becomes one page at its own resolution. | No pages exist, so OCR is skipped and the run ends as `failed`. |
 | `ocr` | The OCR provider reads each page and returns lines of `{text, box, confidence, order, low_confidence}`. The stage records how many lines were flagged low confidence. | A failed page is left out and the stage is marked incomplete; the other pages still count. If no page gives any text, the agent stages are skipped and the run ends as `failed`. |
 | `romanisation` to `knowledge` | Unchanged agent pipeline, see "Coordination Logic". | As described under "Failure Handling". The run continues and ends as `needs_review`. |
 
@@ -226,6 +226,7 @@ flowchart LR
 | Low confidence | `low_confidence` is true when the confidence is below `OCR_CONFIDENCE_THRESHOLD` (default 0.60). The threshold is not calibrated yet (task 3.6), so the flag is recorded for the reviewer and does not change the run status. |
 | Normalisation | Model output gets NFC and collapsed whitespace only. `LABEL_MAP` is a ground-truth fix and is not applied to model output. |
 | Empty lines | A detected line that decodes to empty text is left out of the page. The evaluation script still sees it. |
+| Resolution | PDF pages are rendered at 400 DPI for `trocr` unless `PDF_RENDER_DPI` is set, matching the training pages. The OCR stage records the DPI it saw in `render_dpi`. |
 | Page text | The lines of a page joined with newlines, and pages joined in page order, as for every provider. The text is stored write-once before any agent runs. |
 
 **Evaluation.** `scripts/eval_page_cer.py` runs this provider on the full-resolution pages of the locked test articles and reports matched-line CER (primary: lines matched to ground truth at IoU 0.5, missed and extra lines counted as full edits), page CER in reading order (secondary), detector precision and recall, and seconds per page on CPU. The functions are in `stage_metrics.py`. This is offline reporting only, not a runtime gate.

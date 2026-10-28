@@ -15,6 +15,8 @@ import pymupdf
 from llm_text_runtime import _get_int_env
 
 DEFAULT_RENDER_DPI = 300
+# The TrOCR model and the YOLO line detector were trained on pages rendered at 400 DPI.
+TROCR_RENDER_DPI = 400
 
 # Leading bytes that identify each accepted type.
 MAGIC_BYTES = {
@@ -36,8 +38,10 @@ def detect_file_type(data: bytes) -> str | None:
     return None
 
 
-def render_dpi() -> int:
-    return _get_int_env("PDF_RENDER_DPI") or DEFAULT_RENDER_DPI
+def render_dpi(ocr_provider: str | None = None) -> int:
+    """PDF_RENDER_DPI when set; otherwise the DPI the chosen OCR provider expects."""
+    default = TROCR_RENDER_DPI if ocr_provider == "trocr" else DEFAULT_RENDER_DPI
+    return _get_int_env("PDF_RENDER_DPI") or default
 
 
 def _open_pdf(data: bytes) -> pymupdf.Document:

@@ -275,9 +275,11 @@ class JobRunner:
         """Stage 1: turn the upload into one stored PNG per page. Returns the page keys."""
         record = run.to_dict()
         self._start_stage(run, "render", "Page Rendering")
-        outcome = run_stage("render", self._render_pages, record["document_id"], record["file_type"], fallback=[])
+        dpi = render_dpi(record["ocr_provider"]) if record["file_type"] == "pdf" else None
+        outcome = run_stage(
+            "render", self._render_pages, record["document_id"], record["file_type"], dpi, fallback=[]
+        )
 
-        dpi = render_dpi() if record["file_type"] == "pdf" else None
         run.set_stage(
             "render",
             status="incomplete" if outcome.incomplete else "completed",
@@ -295,10 +297,10 @@ class JobRunner:
         self._save(run)
         return outcome.output
 
-    def _render_pages(self, document_id: str, file_type: str) -> list[str]:
+    def _render_pages(self, document_id: str, file_type: str, dpi: int | None) -> list[str]:
         data = self.storage.load(document_key(document_id, file_type))
         keys = []
-        for number, png in enumerate(iter_page_pngs(data, file_type), start=1):
+        for number, png in enumerate(iter_page_pngs(data, file_type, dpi), start=1):
             key = f"documents/{document_id}/pages/page_{number:04d}.png"
             self.storage.save(key, png)
             keys.append(key)
@@ -367,6 +369,8 @@ class JobRunner:
             duration=duration, error=error, provider=provider.name,
             pages=len(pages), failed_pages=[page["page"] for page in failed], mean_confidence=mean_confidence,
             low_confidence_lines=low_confidence_lines,
+            # The resolution the provider saw; None for an image upload, which keeps its own resolution.
+            render_dpi=record["stages"]["render"].get("dpi"),
         )
         run.update(outputs={"ocr_text": ocr_text, "ocr_mean_confidence": mean_confidence, "ocr_pages": pages})
         run.emit({
