@@ -1,0 +1,16 @@
+{
+ "microsoft/trocr-base-stage1": {
+  "round_trip_exact_%": 100.0,
+  "unk_tokens": 0,
+  "tokens_per_line_mean": 39.9,
+  "tokens_p99": 95,
+  "tokens_max": 120
+ },
+ "xlm-roberta-base": {
+  "round_trip_exact_%": 20.3,
+  "unk_tokens": 5618,
+  "tokens_per_line_mean": 16.7,
+  "tokens_p99": 38,
+  "tokens_max": 51
+ }
+}
