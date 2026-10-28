@@ -91,7 +91,7 @@ Method A and Method B run in parallel on the same OCR text. Translation must fin
 | Component | Model/Tool | Notes |
 | --- | --- | --- |
 | OCR preprocessing | OpenCV, PyMuPDF | PDF/image handling and page preprocessing. |
-| Fine-tuned OCR | PyTorch OCR model trained in Google Colab | Target CER at most 10% and character accuracy at least 90%. |
+| Fine-tuned OCR | YOLO line detector (`ultralytics`) and fine-tuned TrOCR (`transformers`), both trained in Google Colab and run locally | Target CER at most 10% and character accuracy at least 90%. TrOCR v1 line CER is 3.78% (greedy) on the locked test articles. |
 | Romanisation Method A | `mesolitica/jawi-nanot5-small-malaysian-cased` via `transformers`, run locally | Pretrained model used as-is (no fine-tuning). Reported chrF2++ 98.01 Jawi to Rumi on modern Jawi. |
 | Romanisation Method B | Reverse-lookup dictionary built from `mesolitica/jawi-ms-en` (`wikipedia-1word.json` + `rumi-set.json`/`jawi-set.json` train split) | Rule-based. Retries pre-1986 spelling variants, splits joined prefixes, and flags ambiguous/unknown words. |
 | OCR baseline | Tesseract | Used as benchmark baseline. |
@@ -165,7 +165,7 @@ Steps 1 to 5 describe the planned Supabase-backed flow. What is implemented toda
 
 ## Upload and Run Pipeline
 
-Implemented in `backend/main.py`, `job_runner.py`, `pdf_render.py`, `ocr_providers.py` and `document_storage.py`.
+Implemented in `backend/main.py`, `job_runner.py`, `pdf_render.py`, `ocr_providers.py`, `ocr_trocr.py` and `document_storage.py`.
 
 **Unit of work.** One upload is one article: a PDF with one or more pages, or a single page as PNG or JPEG. OCR runs page by page. The page texts are then joined in page order, and the agent stages run once on the whole article text.
 
@@ -187,19 +187,49 @@ flowchart LR
 
 | Stage | What it does | If it fails |
 | --- | --- | --- |
-| `render` | PyMuPDF renders each PDF page to a PNG at `PDF_RENDER_DPI` (default 300). An image upload becomes one page at its own resolution. | No pages exist, so OCR is skipped and the run ends as `failed`. |
-| `ocr` | The OCR provider reads each page and returns lines of `{box, text, confidence}`. | A failed page is left out and the stage is marked incomplete; the other pages still count. If no page gives any text, the agent stages are skipped and the run ends as `failed`. |
+| `render` | PyMuPDF renders each PDF page to a PNG at `PDF_RENDER_DPI`. When it is unset the DPI follows the OCR provider: 400 for `trocr` (the DPI its models were trained on), 300 otherwise. An image upload becomes one page at its own resolution. | No pages exist, so OCR is skipped and the run ends as `failed`. |
+| `ocr` | The OCR provider reads each page and returns lines of `{text, box, confidence, order, low_confidence}`. The stage records how many lines were flagged low confidence. | A failed page is left out and the stage is marked incomplete; the other pages still count. If no page gives any text, the agent stages are skipped and the run ends as `failed`. |
 | `romanisation` to `knowledge` | Unchanged agent pipeline, see "Coordination Logic". | As described under "Failure Handling". The run continues and ends as `needs_review`. |
 
 **Run status.** `pending`, `running`, then one of: `completed` (every stage completed and the gate passed), `needs_review` (finished, but a stage was incomplete or the gate did not pass), or `failed` (no OCR text, an unexpected error, or a server restart). These are the common status values of `DATABASE_SCHEMA.md`. A failing stage never stops a run that still has text to work on.
 
-**OCR provider interface.** `OCRProvider.recognise_page(page)` returns the text lines of one rendered page. The provider is chosen on the server with `OCR_PROVIDER`.
+**OCR provider interface.** `OCRProvider.recognise_page(page)` returns the text lines of one rendered page. The provider is chosen on the server. `OCR_PROVIDER` wins when it is set. Otherwise the provider is `trocr` when `OCR_MODEL_PATH` is set, and `tesseract` when it is not.
 
 | Provider | Use | Notes |
 | --- | --- | --- |
-| `tesseract` (default) | Baseline OCR, runs locally. | Wraps `ocr_jawi.py`. Words are grouped into lines with a box and a mean confidence. |
+| `trocr` (default when `OCR_MODEL_PATH` is set) | Fine-tuned OCR, runs locally. | `ocr_trocr.py`. YOLO line detection, reading order, then TrOCR per line. See "TrOCR OCR Stage" below. |
+| `tesseract` (default otherwise) | Baseline OCR, runs locally. | Wraps `ocr_jawi.py`. Words are grouped into lines with a box and a mean confidence. |
 | `fixture` | Tests and demos. | Reads saved text from `OCR_FIXTURE_DIR` instead of running a model. Box and confidence are empty. |
-| Fine-tuned TrOCR | Planned. | Will be added as another provider. The job runner does not change. |
+
+Only `trocr` fills `order` and `low_confidence`; the other providers leave them `null`.
+
+### TrOCR OCR Stage
+
+The product must see a page the same way the model saw it in training and evaluation, so `ocr_trocr.py` imports the training helpers from `ocr_training/` instead of reimplementing them.
+
+```mermaid
+flowchart LR
+    P[Page PNG, BGR] --> D[yolo_prefill.predict_boxes: conf 0.35, imgsz LINE_DETECTOR_IMGSZ, contained-box suppression]
+    D --> O[yolo_prefill.reading_order: XY-cut, columns right to left]
+    O --> C[trocr_dataset.crop_for train=False: margin 0.12 x box height, full-resolution page, RGB]
+    C --> T[TrOCR in batches of OCR_BATCH_SIZE, max_length 128]
+    T --> N[NFC + whitespace collapse]
+    N --> L[Lines: order, box, text, confidence, low_confidence]
+```
+
+| Step | Detail |
+| --- | --- |
+| Loading | Both models load once, on the first page, behind a lock. Pages are processed one at a time, which keeps memory bounded. The device is `OCR_DEVICE` (`auto` uses CUDA when available, otherwise CPU) and `OCR_TORCH_THREADS` sets the CPU threads. `use_cache` is switched on for decoding; without it CPU decoding is very slow. |
+| Colour order | The detector gets the page as BGR (as `cv2.imread` gave it in training). The recogniser gets RGB crops (as PIL gave them in training). |
+| Decoding | `OCR_NUM_BEAMS`, default 1 (greedy). Greedy is the decoding behind the reported 3.78% test CER. |
+| Confidence | exp(mean token log-prob) per line: from `compute_transition_scores` up to the first end token for greedy, from `sequences_scores` for beam search. Generation scores are dropped after each batch. |
+| Low confidence | `low_confidence` is true when the confidence is below `OCR_CONFIDENCE_THRESHOLD` (default 0.60). The threshold is not calibrated yet (task 3.6), so the flag is recorded for the reviewer and does not change the run status. |
+| Normalisation | Model output gets NFC and collapsed whitespace only. `LABEL_MAP` is a ground-truth fix and is not applied to model output. |
+| Empty lines | A detected line that decodes to empty text is left out of the page. The evaluation script still sees it. |
+| Resolution | PDF pages are rendered at 400 DPI for `trocr` unless `PDF_RENDER_DPI` is set, matching the training pages. The OCR stage records the DPI it saw in `render_dpi`. |
+| Page text | The lines of a page joined with newlines, and pages joined in page order, as for every provider. The text is stored write-once before any agent runs. |
+
+**Evaluation.** `scripts/eval_page_cer.py` runs this provider on the full-resolution pages of the locked test articles and reports matched-line CER (primary: lines matched to ground truth at IoU 0.5, missed and extra lines counted as full edits), page CER in reading order (secondary), detector precision and recall, seconds per page on CPU, and an error breakdown (recognition CER on matched lines, length mismatches, repeated-character runs, extra and missed lines by kind). With `--gold-boxes` it recognises the hand-drawn boxes instead of detected ones, through `TrOCROCRProvider.read_boxes`, to separate recognition error from detection error. The functions are in `stage_metrics.py`. This is offline reporting only, not a runtime gate.
 
 **Original OCR output.** The provider output is saved per page, and the joined article text is saved once, before any agent runs. Storage saves are write-once, so later stages cannot overwrite them. Agents receive the text as input, and their outputs go into the run record.
 
@@ -305,7 +335,7 @@ The planned `extracted_knowledge` table uses different field names (`entities`, 
 - The three LLM agents reach OpenRouter through LangChain `ChatOpenAI`. No other LangChain component makes a network call.
 - LangSmith tracing must stay off. If `LANGSMITH_TRACING` or `LANGCHAIN_TRACING_V2` is set to `true` together with a LangSmith key, LangChain uploads chain inputs and outputs, which are manuscript text, to LangSmith. This is outside the `ALLOW_EXTERNAL_MANUSCRIPT_API` check. Neither variable is set by this project, and the tests clear both.
 - Romanisation runs locally and sends nothing out. Method A downloads its model weights from HuggingFace on first use.
-- Uploaded documents, rendered pages, OCR output and run records stay on the machine under `STORAGE_DIR`. Both OCR providers used by the upload pipeline (`tesseract`, `fixture`) run locally.
+- Uploaded documents, rendered pages, OCR output and run records stay on the machine under `STORAGE_DIR`. All three OCR providers used by the upload pipeline (`trocr`, `tesseract`, `fixture`) run locally. The `trocr` provider loads its models from local files only (`local_files_only` for `transformers`), and Ultralytics runs in offline mode with settings sync off, so it makes no network call.
 - The API never substitutes mock text for a live result. Without a key, or without the flag, `POST /api/pipeline/run` returns `503`. Mock output is served only when `APP_MODE=demo_mock` is set, and such runs report `mode: mock`.
 - The client cannot choose an arbitrary model. `OPENROUTER_ALLOWED_MODELS` is the server-side allowlist, and `GET /api/config` exposes it so the frontend offers only those models.
 - CORS origins come from `CORS_ALLOWED_ORIGINS`, and `jawi_text` is limited by `MAX_TEXT_CHARS`.
@@ -327,7 +357,7 @@ Retries must be logged in `system_logs` and linked to `agent_runs` where relevan
 
 | Failure | Fallback |
 | --- | --- |
-| Fine-tuned OCR unavailable | Use Tesseract or VLM baseline only if configured, and mark output as baseline. |
+| Fine-tuned OCR unavailable | When the model or detector file is missing, uploads are refused with `503`. To run the baseline, set `OCR_PROVIDER=tesseract`; the run record names the provider in `ocr_provider`. There is no silent switch to the baseline. If TrOCR fails on a page at runtime, that page is left out and the run ends as `needs_review`. |
 | Low OCR confidence | Send result to human review before trusting downstream output. |
 | LLM provider unavailable | The stage is retried, then its last valid output is passed through and the stage is marked incomplete. A second provider is not implemented. |
 | Knowledge extraction JSON invalid | One repair call, then an empty result with the stage marked incomplete so a reviewer can correct it. |

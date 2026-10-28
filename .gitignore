@@ -31,3 +31,4 @@ exports/
 .ipynb_checkpoints/
 ocr_training/results/**/*.csv
 ocr_training/results/**/*.jsonl
+jawi_dataset/

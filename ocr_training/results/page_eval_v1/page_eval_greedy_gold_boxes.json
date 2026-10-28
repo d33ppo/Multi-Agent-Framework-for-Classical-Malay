@@ -1,0 +1,980 @@
+{
+ "created_at": "2026-10-28T16:46:36+00:00",
+ "git_commit": "0be7658",
+ "boxes": "gold",
+ "config": {
+  "model": "trocr_v1",
+  "detector": null,
+  "detector_imgsz": 960,
+  "detector_conf": 0.35,
+  "iou_threshold": 0.5,
+  "decoding": "greedy",
+  "num_beams": 1,
+  "batch_size": 16,
+  "device": "cuda",
+  "torch_threads": 10,
+  "test_articles": [
+   "1950_11_009",
+   "1950_11_013",
+   "1950_12_003",
+   "1950_12_007",
+   "1950_12_010",
+   "1950_12_014"
+  ],
+  "page_dpi": 400,
+  "png_stored_dpi": [
+   400
+  ],
+  "upload_render_dpi_for_trocr": 400,
+  "torch": "2.14.1+cu130",
+  "transformers": "4.52.4",
+  "cpu": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel"
+ },
+ "model_load_seconds": 24.38,
+ "overall": {
+  "pages": 13,
+  "matched_line_cer": 0.037888,
+  "matched_line_char_accuracy": 0.962112,
+  "page_cer": 0.036891,
+  "detector_precision": 1.0,
+  "detector_recall": 1.0,
+  "seconds_per_page_mean": 15.929,
+  "seconds_per_page_median": 15.652,
+  "edits": 881,
+  "matched_edits": 881,
+  "missed_chars": 0,
+  "extra_chars": 0,
+  "gold_chars": 23253,
+  "gold_lines": 641,
+  "pred_lines": 641,
+  "matched_lines": 641,
+  "errors": {
+   "recognition": {
+    "lines": 641,
+    "edits": 881,
+    "gold_chars": 23253,
+    "cer": 0.037888
+   },
+   "length_mismatch": {
+    "longer": {
+     "lines": 11,
+     "edits": 148
+    },
+    "shorter": {
+     "lines": 3,
+     "edits": 10
+    }
+   },
+   "repeated_run": {
+    "lines": 3,
+    "edits": 47
+   },
+   "extra": {
+    "overlaps_gold": {
+     "lines": 0,
+     "edits": 0
+    },
+    "no_gold_overlap": {
+     "lines": 0,
+     "edits": 0
+    }
+   },
+   "missed": {
+    "partly_covered": {
+     "lines": 0,
+     "edits": 0
+    },
+    "not_detected": {
+     "lines": 0,
+     "edits": 0
+    }
+   }
+  }
+ },
+ "per_page": [
+  {
+   "article_id": "1950_11_009",
+   "page_index": 0,
+   "width": 3256,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 13.004,
+   "line": {
+    "edits": 98,
+    "matched_edits": 98,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 1664,
+    "cer": 0.058894,
+    "gold_lines": 49,
+    "pred_lines": 49,
+    "matched_lines": 49,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 98,
+    "gold_chars": 1712,
+    "cer": 0.057243
+   },
+   "errors": {
+    "recognition": {
+     "lines": 49,
+     "edits": 98,
+     "gold_chars": 1664,
+     "cer": 0.058894
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 2,
+      "edits": 23
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_11_009",
+   "page_index": 1,
+   "width": 3267,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 22.017,
+   "line": {
+    "edits": 134,
+    "matched_edits": 134,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 1988,
+    "cer": 0.067404,
+    "gold_lines": 63,
+    "pred_lines": 63,
+    "matched_lines": 63,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 134,
+    "gold_chars": 2050,
+    "cer": 0.065366
+   },
+   "errors": {
+    "recognition": {
+     "lines": 63,
+     "edits": 134,
+     "gold_chars": 1988,
+     "cer": 0.067404
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 4,
+      "edits": 55
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_11_009",
+   "page_index": 2,
+   "width": 3267,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 22.192,
+   "line": {
+    "edits": 129,
+    "matched_edits": 129,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 1865,
+    "cer": 0.069169,
+    "gold_lines": 61,
+    "pred_lines": 61,
+    "matched_lines": 61,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 129,
+    "gold_chars": 1925,
+    "cer": 0.067013
+   },
+   "errors": {
+    "recognition": {
+     "lines": 61,
+     "edits": 129,
+     "gold_chars": 1865,
+     "cer": 0.069169
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 4,
+      "edits": 69
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 3,
+     "edits": 47
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_11_013",
+   "page_index": 0,
+   "width": 3267,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 15.652,
+   "line": {
+    "edits": 74,
+    "matched_edits": 74,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 957,
+    "cer": 0.077325,
+    "gold_lines": 17,
+    "pred_lines": 17,
+    "matched_lines": 17,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 74,
+    "gold_chars": 973,
+    "cer": 0.076053
+   },
+   "errors": {
+    "recognition": {
+     "lines": 17,
+     "edits": 74,
+     "gold_chars": 957,
+     "cer": 0.077325
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_003",
+   "page_index": 0,
+   "width": 3267,
+   "height": 4684,
+   "png_dpi": null,
+   "seconds": 15.401,
+   "line": {
+    "edits": 18,
+    "matched_edits": 18,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 2415,
+    "cer": 0.007453,
+    "gold_lines": 61,
+    "pred_lines": 61,
+    "matched_lines": 61,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 18,
+    "gold_chars": 2475,
+    "cer": 0.007273
+   },
+   "errors": {
+    "recognition": {
+     "lines": 61,
+     "edits": 18,
+     "gold_chars": 2415,
+     "cer": 0.007453
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 1,
+      "edits": 1
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_003",
+   "page_index": 1,
+   "width": 3267,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 16.38,
+   "line": {
+    "edits": 47,
+    "matched_edits": 47,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 2480,
+    "cer": 0.018952,
+    "gold_lines": 65,
+    "pred_lines": 65,
+    "matched_lines": 65,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 47,
+    "gold_chars": 2544,
+    "cer": 0.018475
+   },
+   "errors": {
+    "recognition": {
+     "lines": 65,
+     "edits": 47,
+     "gold_chars": 2480,
+     "cer": 0.018952
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_007",
+   "page_index": 0,
+   "width": 3284,
+   "height": 4678,
+   "png_dpi": null,
+   "seconds": 32.824,
+   "line": {
+    "edits": 75,
+    "matched_edits": 75,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 2802,
+    "cer": 0.026767,
+    "gold_lines": 83,
+    "pred_lines": 83,
+    "matched_lines": 83,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 75,
+    "gold_chars": 2884,
+    "cer": 0.026006
+   },
+   "errors": {
+    "recognition": {
+     "lines": 83,
+     "edits": 75,
+     "gold_chars": 2802,
+     "cer": 0.026767
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 1,
+      "edits": 2
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_010",
+   "page_index": 0,
+   "width": 3267,
+   "height": 4673,
+   "png_dpi": 400,
+   "seconds": 19.403,
+   "line": {
+    "edits": 82,
+    "matched_edits": 82,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 2176,
+    "cer": 0.037684,
+    "gold_lines": 64,
+    "pred_lines": 64,
+    "matched_lines": 64,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 82,
+    "gold_chars": 2239,
+    "cer": 0.036623
+   },
+   "errors": {
+    "recognition": {
+     "lines": 64,
+     "edits": 82,
+     "gold_chars": 2176,
+     "cer": 0.037684
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 2,
+      "edits": 8
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_010",
+   "page_index": 1,
+   "width": 3267,
+   "height": 4673,
+   "png_dpi": 400,
+   "seconds": 10.348,
+   "line": {
+    "edits": 26,
+    "matched_edits": 26,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 1796,
+    "cer": 0.014477,
+    "gold_lines": 47,
+    "pred_lines": 47,
+    "matched_lines": 47,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 26,
+    "gold_chars": 1842,
+    "cer": 0.014115
+   },
+   "errors": {
+    "recognition": {
+     "lines": 47,
+     "edits": 26,
+     "gold_chars": 1796,
+     "cer": 0.014477
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_010",
+   "page_index": 2,
+   "width": 3284,
+   "height": 4678,
+   "png_dpi": 400,
+   "seconds": 20.088,
+   "line": {
+    "edits": 66,
+    "matched_edits": 66,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 1726,
+    "cer": 0.038239,
+    "gold_lines": 44,
+    "pred_lines": 44,
+    "matched_lines": 44,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 66,
+    "gold_chars": 1769,
+    "cer": 0.037309
+   },
+   "errors": {
+    "recognition": {
+     "lines": 44,
+     "edits": 66,
+     "gold_chars": 1726,
+     "cer": 0.038239
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_010",
+   "page_index": 3,
+   "width": 3284,
+   "height": 4678,
+   "png_dpi": 400,
+   "seconds": 10.106,
+   "line": {
+    "edits": 33,
+    "matched_edits": 33,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 2064,
+    "cer": 0.015988,
+    "gold_lines": 57,
+    "pred_lines": 57,
+    "matched_lines": 57,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 33,
+    "gold_chars": 2120,
+    "cer": 0.015566
+   },
+   "errors": {
+    "recognition": {
+     "lines": 57,
+     "edits": 33,
+     "gold_chars": 2064,
+     "cer": 0.015988
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_014",
+   "page_index": 0,
+   "width": 3267,
+   "height": 4678,
+   "png_dpi": 400,
+   "seconds": 6.071,
+   "line": {
+    "edits": 51,
+    "matched_edits": 51,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 893,
+    "cer": 0.057111,
+    "gold_lines": 23,
+    "pred_lines": 23,
+    "matched_lines": 23,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 51,
+    "gold_chars": 915,
+    "cer": 0.055738
+   },
+   "errors": {
+    "recognition": {
+     "lines": 23,
+     "edits": 51,
+     "gold_chars": 893,
+     "cer": 0.057111
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_12_014",
+   "page_index": 1,
+   "width": 3267,
+   "height": 4684,
+   "png_dpi": 400,
+   "seconds": 3.585,
+   "line": {
+    "edits": 48,
+    "matched_edits": 48,
+    "missed_chars": 0,
+    "extra_chars": 0,
+    "gold_chars": 427,
+    "cer": 0.112412,
+    "gold_lines": 7,
+    "pred_lines": 7,
+    "matched_lines": 7,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 48,
+    "gold_chars": 433,
+    "cer": 0.110855
+   },
+   "errors": {
+    "recognition": {
+     "lines": 7,
+     "edits": 48,
+     "gold_chars": 427,
+     "cer": 0.112412
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  }
+ ]
+}
