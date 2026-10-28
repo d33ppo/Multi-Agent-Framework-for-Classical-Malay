@@ -188,7 +188,7 @@ class UploadRunTests(UploadTestCase):
 
         outputs = run["outputs"]
         self.assertEqual(outputs["ocr_text"], f"{PAGE_1}\n{PAGE_2}")
-        self.assertEqual(outputs["ocr_pages"][0]["lines"], [{"text": PAGE_1, "box": None, "confidence": None}])
+        self.assertEqual(outputs["ocr_pages"][0]["lines"], [{"text": PAGE_1, "box": None, "confidence": None, "order": None, "low_confidence": None}])
         self.assertEqual(outputs["romanisation"]["text"], "ibu pada ibu pada ibu\npada ibu pada ibu pada")
         self.assertEqual(outputs["translation"], "ibu pada masa dahulu")
         self.assertEqual(outputs["summary"], "Ringkasan ujian.")

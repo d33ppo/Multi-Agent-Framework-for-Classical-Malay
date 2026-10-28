@@ -357,6 +357,8 @@ class JobRunner:
             self._mark_incomplete(run, ["ocr"])
         confidences = [line["confidence"] for page in pages for line in page["lines"] if line["confidence"] is not None]
         mean_confidence = _mean(confidences)
+        # Recorded for the reviewer only: the threshold is not calibrated yet, so it does not change the run status.
+        low_confidence_lines = sum(1 for page in pages for line in page["lines"] if line.get("low_confidence"))
         duration = round(time.time() - started, 3)
 
         run.set_stage(
@@ -364,6 +366,7 @@ class JobRunner:
             status="incomplete" if failed else "completed",
             duration=duration, error=error, provider=provider.name,
             pages=len(pages), failed_pages=[page["page"] for page in failed], mean_confidence=mean_confidence,
+            low_confidence_lines=low_confidence_lines,
         )
         run.update(outputs={"ocr_text": ocr_text, "ocr_mean_confidence": mean_confidence, "ocr_pages": pages})
         run.emit({

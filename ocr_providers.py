@@ -2,10 +2,11 @@
 OCR providers for the upload pipeline.
 
 Every provider implements one method, recognise_page(page), which returns the
-text lines of one rendered page. The fine-tuned TrOCR model will be added as
-another provider later; the job runner does not need to change for that.
+text lines of one rendered page. The fine-tuned TrOCR provider lives in
+ocr_trocr.py and is imported only when it is chosen, so torch, transformers and
+ultralytics are not needed for the other providers.
 
-Both providers here run locally. Nothing is sent to an external service.
+All three providers run locally. Nothing is sent to an external service.
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ class OCRLine:
     text: str
     box: tuple[int, int, int, int] | None = None  # left, top, width, height in page pixels
     confidence: float | None = None  # 0 to 1, None when the provider has no score
+    order: int | None = None  # 1-based reading-order position, None when the provider does not number lines
+    low_confidence: bool | None = None  # confidence below OCR_CONFIDENCE_THRESHOLD, None when not checked
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -100,12 +103,23 @@ class TesseractOCRProvider:
         return [OCRLine(**line) for line in extract_jawi_lines(page.png)]
 
 
-PROVIDERS = {"fixture": FixtureOCRProvider, "tesseract": TesseractOCRProvider}
+def _trocr_provider() -> OCRProvider:
+    from ocr_trocr import TrOCROCRProvider
+
+    return TrOCROCRProvider()
+
+
+PROVIDERS = {"fixture": FixtureOCRProvider, "tesseract": TesseractOCRProvider, "trocr": _trocr_provider}
+
+
+def default_provider_name() -> str:
+    """OCR_PROVIDER when set; otherwise trocr once OCR_MODEL_PATH is set, else the Tesseract baseline."""
+    return env_value("OCR_PROVIDER") or ("trocr" if env_value("OCR_MODEL_PATH") else DEFAULT_OCR_PROVIDER)
 
 
 def build_ocr_provider(name: str | None = None) -> OCRProvider:
-    """Create the provider named by OCR_PROVIDER. The server chooses it, not the client."""
-    name = (name or env_value("OCR_PROVIDER", DEFAULT_OCR_PROVIDER)).lower()
+    """Create the configured provider. The server chooses it, not the client."""
+    name = (name or default_provider_name()).lower()
     if name not in PROVIDERS:
         raise ValueError(f"Unknown OCR_PROVIDER '{name}'. Choose one of: {', '.join(sorted(PROVIDERS))}.")
     return PROVIDERS[name]()
