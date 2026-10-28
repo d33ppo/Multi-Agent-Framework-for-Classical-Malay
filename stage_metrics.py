@@ -3,6 +3,7 @@ Stage Evaluation Metrics (offline, for thesis reporting — NOT a runtime gate).
 
 | Stage                | Method                                             |
 |----------------------|----------------------------------------------------|
+| OCR (page level)     | Matched-line CER and page CER vs jawi_corrected    |
 | Romanisation         | BLEU + chrF vs Majalah Qalam romanised gold text   |
 | Translation          | Human rubric (adequacy + fluency, 1-5), aggregated |
 | Summarisation        | ROUGE-1/2/L vs human-written reference summaries   |
@@ -14,6 +15,7 @@ Inputs:
   romanisation / summary : JSONL, one {"id", "hypothesis", "reference"} per line
   knowledge              : JSONL, one {"id", "prediction": {...}, "gold": {...}} per line
   rubric                 : CSV with columns item_id, rater, adequacy, fluency
+  OCR page metrics       : run scripts/eval_page_cer.py, which calls the functions below
 
 Usage:
     python stage_metrics.py romanisation eval/romanisation.jsonl
@@ -107,6 +109,81 @@ def rubric_summary(rows: list[dict]) -> dict:
             "stdev": round(stdev(values), 3) if len(values) > 1 else None,
         }
     return result
+
+
+def _box_iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def match_lines(pred_boxes: list, gold_boxes: list, threshold: float = 0.5) -> list[tuple[int, int]]:
+    """
+    Greedy one-to-one matching at IoU >= threshold, most confident prediction first
+    (the rule of yolo_prefill.match_stats). Boxes are (x1, y1, x2, y2[, conf]).
+    Returns (pred_index, gold_index) pairs.
+    """
+    order = sorted(range(len(pred_boxes)), key=lambda i: -(pred_boxes[i][4] if len(pred_boxes[i]) > 4 else 1))
+    used, pairs = set(), []
+    for i in order:
+        best, best_j = 0.0, None
+        for j, gold in enumerate(gold_boxes):
+            if j in used:
+                continue
+            value = _box_iou(pred_boxes[i], gold)
+            if value > best:
+                best, best_j = value, j
+        if best >= threshold:
+            used.add(best_j)
+            pairs.append((i, best_j))
+    return pairs
+
+
+def _ratio(numerator: float, denominator: float) -> float | None:
+    return round(numerator / denominator, 6) if denominator else None
+
+
+def matched_line_cer(pred_lines: list[tuple], gold_lines: list[tuple], threshold: float = 0.5) -> dict:
+    """
+    Page-level OCR error that does not depend on reading order. Lines are (box, text).
+    Matched pairs are scored by edit distance, a missed gold line counts as deleting
+    all its characters and an extra predicted line as inserting all of its own.
+    CER = edits / gold characters, so it can go above 1 on a page full of false lines.
+    Also returns detector precision and recall at the same IoU threshold.
+    """
+    from Levenshtein import distance
+
+    pairs = match_lines([box for box, _ in pred_lines], [box for box, _ in gold_lines], threshold)
+    matched_pred = {i for i, _ in pairs}
+    matched_gold = {j for _, j in pairs}
+    matched_edits = sum(distance(gold_lines[j][1], pred_lines[i][1]) for i, j in pairs)
+    missed_chars = sum(len(text) for j, (_, text) in enumerate(gold_lines) if j not in matched_gold)
+    extra_chars = sum(len(text) for i, (_, text) in enumerate(pred_lines) if i not in matched_pred)
+    gold_chars = sum(len(text) for _, text in gold_lines)
+    edits = matched_edits + missed_chars + extra_chars
+    return {
+        "edits": edits,
+        "matched_edits": matched_edits,
+        "missed_chars": missed_chars,
+        "extra_chars": extra_chars,
+        "gold_chars": gold_chars,
+        "cer": _ratio(edits, gold_chars),
+        "gold_lines": len(gold_lines),
+        "pred_lines": len(pred_lines),
+        "matched_lines": len(pairs),
+        "precision": _ratio(len(pairs), len(pred_lines)),
+        "recall": _ratio(len(pairs), len(gold_lines)),
+    }
+
+
+def page_cer(pred_text: str, gold_text: str) -> dict:
+    """CER of the whole page text. Sensitive to reading order as well as recognition."""
+    from Levenshtein import distance
+
+    edits = distance(gold_text, pred_text)
+    return {"edits": edits, "gold_chars": len(gold_text), "cer": _ratio(edits, len(gold_text))}
 
 
 def _check_aligned(a: list, b: list) -> None:
