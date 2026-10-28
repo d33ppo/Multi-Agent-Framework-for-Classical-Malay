@@ -1,0 +1,420 @@
+"""
+Tests for the TrOCR OCR provider, its preprocessing and the page-level OCR metrics.
+
+The YOLO detector and the TrOCR recogniser are fakes, and the one test that runs
+real generation builds a tiny random model in memory. No model is downloaded and
+nothing touches the network.
+"""
+
+import importlib.util
+import json
+import os
+from types import SimpleNamespace
+
+import cv2
+import numpy as np
+
+import ocr_trocr
+import stage_metrics
+from ocr_providers import FixtureOCRProvider, PageImage, TesseractOCRProvider, build_ocr_provider
+from ocr_trocr import TrOCROCRProvider, TrOCRRecogniser, line_crop, mean_logprob_confidence, normalise_output
+from tests.support import TempDirTestCase
+from tests.test_upload_jobs import UploadTestCase
+
+td, yp = ocr_trocr.td, ocr_trocr.yp
+PAGE_W, PAGE_H = 1100, 800
+
+
+def load_eval_script():
+    path = ocr_trocr.PROJECT_DIR / "scripts" / "eval_page_cer.py"
+    spec = importlib.util.spec_from_file_location("eval_page_cer", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def page_png(fill=(255, 255, 255), width=PAGE_W, height=PAGE_H, patches=()):
+    """A BGR page encoded as PNG. `patches` are (x1, y1, x2, y2, bgr) rectangles."""
+    image = np.full((height, width, 3), fill, dtype=np.uint8)
+    for x1, y1, x2, y2, colour in patches:
+        image[y1:y2, x1:x2] = colour
+    return cv2.imencode(".png", image)[1].tobytes()
+
+
+def page(png):
+    return PageImage("article", 1, 1, png)
+
+
+class _Array:
+    """Stands in for a torch tensor: .cpu().numpy()."""
+
+    def __init__(self, values, shape):
+        self.values = np.asarray(values, dtype=np.float32).reshape(shape)
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self.values
+
+
+class FakeYOLO:
+    """Returns fixed boxes (x1, y1, x2, y2, conf) the way ultralytics does."""
+
+    def __init__(self, boxes):
+        self.boxes = boxes
+        self.calls = []
+
+    def predict(self, image, conf, imgsz, verbose):
+        self.calls.append({"conf": conf, "imgsz": imgsz, "image": image})
+        boxes = SimpleNamespace(xyxy=_Array([b[:4] for b in self.boxes], (-1, 4)),
+                                conf=_Array([b[4] for b in self.boxes], (-1,)))
+        return [SimpleNamespace(boxes=boxes)]
+
+
+class FakeRecogniser:
+    """Answers line N with its own text, or with the given (text, confidence) pairs."""
+
+    def __init__(self, answers=None):
+        self.answers = answers
+        self.crops = []
+
+    def __call__(self, crops):
+        self.crops.extend(crops)
+        if self.answers is not None:
+            return self.answers[: len(crops)]
+        return [(f"line {i}", 0.9) for i in range(1, len(crops) + 1)]
+
+
+def provider_with(boxes, answers=None, **kwargs):
+    detector, recogniser = FakeYOLO(boxes), FakeRecogniser(answers)
+    return TrOCROCRProvider(detector=detector, recogniser=recogniser, **kwargs), detector, recogniser
+
+
+def column(x1, x2, ys, height=30, conf=0.9):
+    return [(x1, y, x2, y + height, conf) for y in ys]
+
+
+class ReadingOrderTests(TempDirTestCase):
+    """yolo_prefill.reading_order on synthetic Qalam-like layouts."""
+
+    ROWS = [100, 150, 200, 250]
+
+    def order(self, named):
+        boxes = [(*box, name) for box, name in named]
+        return [b[-1] for b in yp.reading_order(boxes, PAGE_W)]
+
+    def columns(self):
+        left = [((100, y, 540, y + 30), f"L{i}") for i, y in enumerate(self.ROWS, 1)]
+        right = [((560, y, 1000, y + 30), f"R{i}") for i, y in enumerate(self.ROWS, 1)]
+        return left + right
+
+    def test_two_columns_are_read_right_column_first(self):
+        self.assertEqual(self.order(self.columns()), ["R1", "R2", "R3", "R4", "L1", "L2", "L3", "L4"])
+
+    def test_headline_band_across_columns_comes_first(self):
+        named = [((100, 20, 1000, 70), "H")] + self.columns()
+        self.assertEqual(self.order(named), ["H", "R1", "R2", "R3", "R4", "L1", "L2", "L3", "L4"])
+
+    def test_pieces_of_one_printed_line_are_read_right_to_left(self):
+        named = [((100, 100, 480, 130), "piece 2"), ((520, 100, 1000, 130), "piece 1"),
+                 ((100, 150, 1000, 180), "line 2"), ((100, 200, 1000, 230), "line 3")]
+        self.assertEqual(self.order(named), ["piece 1", "piece 2", "line 2", "line 3"])
+
+    def test_adverts_below_the_text_come_after_it(self):
+        named = self.columns() + [((100, 700, 500, 760), "advert L"), ((600, 700, 1000, 760), "advert R")]
+        self.assertEqual(self.order(named)[-2:], ["advert R", "advert L"])
+        self.assertEqual(self.order(named)[:8], ["R1", "R2", "R3", "R4", "L1", "L2", "L3", "L4"])
+
+
+class CropTests(TempDirTestCase):
+    def test_crop_margin_is_0_12_of_the_box_height_from_the_full_page(self):
+        image = np.random.default_rng(0).integers(0, 255, (PAGE_H, PAGE_W, 3), dtype=np.uint8)
+        box = (200.0, 300.0, 700.0, 340.0)  # 40 px high, so the margin is 4.8 px
+        crop = line_crop(image, box)
+        self.assertEqual(td.EVAL_MARGIN_FRAC, 0.12)
+        np.testing.assert_array_equal(crop, image[int(300 - 4.8):int(340 + 4.8), int(200 - 4.8):int(700 + 4.8)])
+        np.testing.assert_array_equal(
+            crop, td.crop_for(image, {"bx1": 200.0, "by1": 300.0, "bx2": 700.0, "by2": 340.0}, train=False))
+
+    def test_crop_is_clamped_at_the_page_edge(self):
+        image = np.zeros((PAGE_H, PAGE_W, 3), dtype=np.uint8)
+        self.assertEqual(line_crop(image, (0.0, 2.0, 50.0, 52.0)).shape, (int(52 + 6), int(50 + 6), 3))
+
+    def test_provider_hands_the_recogniser_rgb_crops_of_each_box(self):
+        blue_bgr = (255, 0, 0)
+        png = page_png(patches=[(200, 300, 700, 340, blue_bgr)])
+        provider, detector, recogniser = provider_with([(200.0, 300.0, 700.0, 340.0, 0.9)])
+        provider.recognise_page(page(png))
+
+        self.assertEqual(recogniser.crops[0].shape, (344 - 295, 704 - 195, 3))
+        self.assertEqual(tuple(recogniser.crops[0][20, 100]), (0, 0, 255))  # RGB
+        self.assertEqual(tuple(detector.calls[0]["image"][320, 400]), blue_bgr)  # the detector gets BGR
+
+
+class ProviderTests(TempDirTestCase):
+    def test_page_with_zero_boxes_gives_no_lines_and_skips_the_recogniser(self):
+        provider, _detector, recogniser = provider_with([])
+        self.assertEqual(provider.recognise_page(page(page_png())), [])
+        self.assertEqual(recogniser.crops, [])
+
+    def test_detector_uses_the_training_settings(self):
+        provider, detector, _ = provider_with([])
+        provider.recognise_page(page(page_png()))
+        self.assertEqual((detector.calls[0]["conf"], detector.calls[0]["imgsz"]), (0.35, 960))
+
+        os.environ["LINE_DETECTOR_IMGSZ"] = "1280"
+        provider, detector, _ = provider_with([])
+        provider.recognise_page(page(page_png()))
+        self.assertEqual(detector.calls[0]["imgsz"], 1280)
+
+    def test_lines_come_back_in_reading_order_with_box_and_confidence(self):
+        boxes = column(100, 540, [100, 150]) + column(560, 1000, [100, 150])
+        provider, _, _ = provider_with(boxes)
+        lines = provider.recognise_page(page(page_png()))
+
+        self.assertEqual([line.order for line in lines], [1, 2, 3, 4])
+        self.assertEqual(lines[0].box, (560, 100, 440, 30))  # right column first, left/top/width/height
+        self.assertEqual(lines[2].box, (100, 100, 440, 30))
+        self.assertEqual(lines[0].to_dict(), {"text": "line 1", "box": (560, 100, 440, 30), "confidence": 0.9,
+                                              "order": 1, "low_confidence": False})
+
+    def test_fragment_inside_a_line_box_is_suppressed(self):
+        boxes = [(100, 100, 1000, 130, 0.95), (400, 102, 600, 128, 0.5)]
+        provider, _, recogniser = provider_with(boxes)
+        self.assertEqual(len(provider.recognise_page(page(page_png()))), 1)
+        self.assertEqual(len(recogniser.crops), 1)
+
+    def test_low_confidence_flag_follows_the_threshold(self):
+        boxes = column(100, 1000, [100, 150, 200])
+        answers = [("ا", 0.95), ("ب", 0.55), ("ت", None)]
+        provider, _, _ = provider_with(boxes, answers)
+        lines = provider.recognise_page(page(page_png()))
+        self.assertEqual([line.low_confidence for line in lines], [False, True, None])  # default 0.60
+
+        os.environ["OCR_CONFIDENCE_THRESHOLD"] = "0.99"
+        provider, _, _ = provider_with(boxes, answers)
+        self.assertEqual([line.low_confidence for line in provider.recognise_page(page(page_png()))],
+                         [True, True, None])
+
+    def test_invalid_threshold_is_rejected(self):
+        os.environ["OCR_CONFIDENCE_THRESHOLD"] = "high"
+        with self.assertRaises(ValueError):
+            provider_with([])
+
+    def test_empty_recognised_lines_are_left_out_of_the_page_but_kept_for_evaluation(self):
+        boxes = column(100, 1000, [100, 150])
+        provider, _, _ = provider_with(boxes, [("", 0.2), ("ب", 0.9)])
+        self.assertEqual([line.text for line in provider.recognise_page(page(page_png()))], ["ب"])
+        self.assertEqual([line.text for line in provider.read_page(page_png())], ["", "ب"])
+
+    def test_undecodable_page_raises(self):
+        provider, _, _ = provider_with([])
+        with self.assertRaises(ValueError):
+            provider.recognise_page(page(b"not an image"))
+
+
+class NormalisationAndConfidenceTests(TempDirTestCase):
+    def test_output_gets_nfc_and_whitespace_collapse_but_not_the_label_map(self):
+        decomposed = "أ"  # alef + hamza above, NFC gives U+0623
+        self.assertEqual(normalise_output(f"  ڤد  {decomposed}\n ک "), "ڤد أ ک")  # ڤ and ک stay as printed
+
+    def test_confidence_stops_at_the_first_eos(self):
+        logprobs = [np.log(0.5), np.log(0.5), np.log(1.0), -50.0, -50.0]  # padding after EOS has junk scores
+        self.assertAlmostEqual(mean_logprob_confidence([5, 6, 2, 1, 1], logprobs, 2), round(np.exp(np.mean(logprobs[:3])), 4))
+        self.assertAlmostEqual(mean_logprob_confidence([5, 6], logprobs[:2], [2]), 0.5)
+        self.assertIsNone(mean_logprob_confidence([], [], 2))
+
+
+class TinyModelTests(TempDirTestCase):
+    """Real generate() and score handling on a tiny random VisionEncoderDecoder built in memory."""
+
+    @staticmethod
+    def tiny_model():
+        import torch
+        from transformers import TrOCRConfig, ViTConfig, VisionEncoderDecoderConfig, VisionEncoderDecoderModel
+
+        encoder = ViTConfig(image_size=32, patch_size=16, hidden_size=16, num_hidden_layers=1,
+                            num_attention_heads=2, intermediate_size=32)
+        decoder = TrOCRConfig(vocab_size=12, d_model=16, decoder_layers=1, decoder_attention_heads=2,
+                              decoder_ffn_dim=32, max_position_embeddings=160, pad_token_id=1,
+                              bos_token_id=0, eos_token_id=2, decoder_start_token_id=0, use_cache=False)
+        config = VisionEncoderDecoderConfig.from_encoder_decoder_configs(encoder, decoder)
+        config.decoder_start_token_id, config.pad_token_id, config.eos_token_id = 0, 1, 2
+        torch.manual_seed(0)
+        model = VisionEncoderDecoderModel(config)
+        model.generation_config.decoder_start_token_id = 0
+        model.generation_config.pad_token_id = 1
+        model.generation_config.eos_token_id = 2
+        model.generation_config.use_cache = False
+        return model
+
+    class Processor:
+        def __init__(self):
+            self.batches = []
+
+        def __call__(self, images, return_tensors):
+            import torch
+
+            self.batches.append(len(images))
+            return SimpleNamespace(pixel_values=torch.rand(len(images), 3, 32, 32, generator=torch.Generator().manual_seed(1)))
+
+        def batch_decode(self, sequences, skip_special_tokens):
+            return [" ".join(str(int(t)) for t in seq if int(t) > 2) + "   " for seq in sequences]
+
+    def run_recogniser(self, num_beams):
+        processor = self.Processor()
+        recogniser = TrOCRRecogniser(self.tiny_model(), processor, num_beams=num_beams, batch_size=2)
+        crops = [np.full((20, 60, 3), 200, dtype=np.uint8) for _ in range(5)]
+        return recogniser, processor, recogniser(crops)
+
+    def test_greedy_decoding_returns_text_and_confidence_per_crop(self):
+        recogniser, processor, results = self.run_recogniser(num_beams=1)
+        self.assertTrue(recogniser.model.config.decoder.use_cache)
+        self.assertTrue(recogniser.model.generation_config.use_cache)
+        self.assertEqual(processor.batches, [2, 2, 1])
+        self.assertEqual(len(results), 5)
+        for text, confidence in results:
+            self.assertEqual(text, text.strip())
+            self.assertGreater(confidence, 0.0)
+            self.assertLessEqual(confidence, 1.0)
+
+    def test_beam_decoding_uses_the_sequence_scores(self):
+        _, _, results = self.run_recogniser(num_beams=2)
+        self.assertEqual(len(results), 5)
+        self.assertTrue(all(0.0 < confidence <= 1.0 for _, confidence in results))
+
+
+class ProviderSelectionTests(TempDirTestCase):
+    def make_models(self):
+        model_dir = self.tmp / "trocr_v1"
+        model_dir.mkdir()
+        (model_dir / "config.json").write_text("{}", encoding="utf-8")
+        detector = self.tmp / "lines.pt"
+        detector.write_bytes(b"")
+        return model_dir, detector
+
+    def test_trocr_is_the_default_once_the_model_path_is_set(self):
+        self.assertIsInstance(build_ocr_provider(), TesseractOCRProvider)
+        model_dir, detector = self.make_models()
+        os.environ.update(OCR_MODEL_PATH=str(model_dir), LINE_DETECTOR_PATH=str(detector))
+        provider = build_ocr_provider()
+        self.assertIsInstance(provider, TrOCROCRProvider)
+        self.assertIsNone(provider._recogniser)  # nothing is loaded until the first page
+
+    def test_ocr_provider_setting_still_wins(self):
+        model_dir, detector = self.make_models()
+        os.environ.update(OCR_MODEL_PATH=str(model_dir), LINE_DETECTOR_PATH=str(detector), OCR_PROVIDER="fixture")
+        self.assertIsInstance(build_ocr_provider(), FixtureOCRProvider)
+
+    def test_missing_model_or_detector_is_a_configuration_error(self):
+        model_dir, detector = self.make_models()
+        os.environ.update(OCR_MODEL_PATH=str(self.tmp / "missing"), LINE_DETECTOR_PATH=str(detector))
+        with self.assertRaisesRegex(ValueError, "TrOCR model not found"):
+            build_ocr_provider()
+        os.environ.update(OCR_MODEL_PATH=str(model_dir), LINE_DETECTOR_PATH=str(self.tmp / "missing.pt"))
+        with self.assertRaisesRegex(ValueError, "Line detector not found"):
+            build_ocr_provider()
+        os.environ.update(OCR_PROVIDER="trocr", OCR_MODEL_PATH="")
+        with self.assertRaisesRegex(ValueError, "TrOCR model not found"):
+            build_ocr_provider()
+
+
+class UploadWithTrOCRTests(UploadTestCase):
+    def test_upload_runs_with_the_trocr_provider_and_counts_low_confidence_lines(self):
+        provider, _, _ = provider_with(column(100, 1000, [100, 150]), [("ايبو ڤد ايبو ڤد ايبو", 0.9),
+                                                                       ("ڤد ايبو ڤد ايبو ڤد", 0.3)])
+        self.patch("backend.main.build_ocr_provider", lambda: provider)
+        run = self.finished_run(self.upload(page_png(), name="page.png"))
+
+        self.assertEqual(run["ocr_provider"], "trocr")
+        self.assertEqual(run["stages"]["ocr"]["low_confidence_lines"], 1)
+        self.assertEqual(run["outputs"]["ocr_text"], "ايبو ڤد ايبو ڤد ايبو\nڤد ايبو ڤد ايبو ڤد")
+        lines = run["outputs"]["ocr_pages"][0]["lines"]
+        self.assertEqual([(line["order"], line["low_confidence"]) for line in lines], [(1, False), (2, True)])
+        self.assertEqual(run["status"], "completed")  # the uncalibrated flag does not change the run status
+
+
+class PageMetricTests(TempDirTestCase):
+    def test_matched_line_cer_counts_misses_and_extras_as_full_edits(self):
+        gold = [((0, 0, 100, 20), "abcd"), ((0, 30, 100, 50), "efgh"), ((0, 60, 100, 80), "ijkl")]
+        pred = [((1, 0, 100, 20, 0.9), "abXd"),     # matched, 1 edit
+                ((0, 31, 100, 50, 0.8), "efgh"),    # matched, 0 edits
+                ((0, 200, 100, 220, 0.7), "zz")]    # extra, 2 insertions; "ijkl" missed, 4 deletions
+        result = stage_metrics.matched_line_cer(pred, gold)
+        self.assertEqual((result["matched_edits"], result["missed_chars"], result["extra_chars"]), (1, 4, 2))
+        self.assertEqual((result["edits"], result["gold_chars"]), (7, 12))
+        self.assertAlmostEqual(result["cer"], 7 / 12, places=6)
+        self.assertAlmostEqual(result["precision"], 2 / 3, places=6)
+        self.assertAlmostEqual(result["recall"], 2 / 3, places=6)
+
+    def test_perfect_page_and_empty_prediction(self):
+        gold = [((0, 0, 100, 20), "abcd")]
+        self.assertEqual(stage_metrics.matched_line_cer([((0, 0, 100, 20, 1.0), "abcd")], gold)["cer"], 0.0)
+        empty = stage_metrics.matched_line_cer([], gold)
+        self.assertEqual((empty["cer"], empty["recall"], empty["precision"]), (1.0, 0.0, None))
+
+    def test_matched_line_cer_ignores_order_but_page_cer_does_not(self):
+        gold = [((0, 0, 100, 20), "abcd"), ((0, 30, 100, 50), "efgh")]
+        pred = [((0, 30, 100, 50, 0.9), "efgh"), ((0, 0, 100, 20, 0.9), "abcd")]
+        self.assertEqual(stage_metrics.matched_line_cer(pred, gold)["cer"], 0.0)
+        self.assertGreater(stage_metrics.page_cer("efgh\nabcd", "abcd\nefgh")["cer"], 0.0)
+
+    def test_one_to_one_matching_agrees_with_the_detector_check(self):
+        rng = np.random.default_rng(3)
+        gold = [(x, y, x + 300, y + 30) for x in (100, 500) for y in range(50, 700, 45)]
+        pred = [(x + rng.uniform(-20, 20), y + rng.uniform(-10, 10), x2 + rng.uniform(-20, 20), y2, rng.uniform())
+                for x, y, x2, y2 in gold[::2]] + [(900, 900, 1000, 930, 0.99)]
+        pairs = stage_metrics.match_lines(pred, gold)
+        self.assertEqual(len(pairs), yp.match_stats(pred, gold)["tp"])
+        self.assertEqual(len({j for _, j in pairs}), len(pairs))
+
+
+class EvalScriptTests(TempDirTestCase):
+    def write_export(self):
+        def result(box_id, box, text):
+            return [{"id": box_id, "type": "rectanglelabels", "value": dict(zip(("x", "y", "width", "height"), box))},
+                    {"id": box_id, "type": "textarea", "value": {"text": [text]}}]
+
+        def task(task_id, data, annotations):
+            return {"id": task_id, "data": data, "annotations": annotations}
+
+        export = [
+            # Task 1 has no metadata; the override maps it to 1950_11_002 page 0.
+            task(1, {"image": ""}, [{"updated_at": "2026-01-01", "result": result("a", (10, 10, 50, 5), "ڤد")}]),
+            # The same test page twice: the later annotation wins.
+            task(2, {"article_id": "1950_11_009", "page_index": 0, "image": ""},
+                 [{"updated_at": "2026-01-01", "result": result("b", (10, 10, 50, 5), "old")}]),
+            task(3, {"article_id": "1950_11_009", "page_index": 0, "image": ""},
+                 [{"updated_at": "2026-02-01",
+                   "result": result("c", (10, 10, 50, 5), " ايبو   ڤد ") + result("d", (10, 30, 0.1, 5), "tiny")}]),
+        ]
+        path = self.tmp / "export.json"
+        path.write_text(json.dumps(export, ensure_ascii=False), encoding="utf-8")
+        return path
+
+    def test_ground_truth_uses_the_override_latest_annotation_and_label_normalisation(self):
+        script = load_eval_script()
+        export = self.write_export()
+
+        pages = script.load_test_pages(export, ["1950_11_009", "1950_11_002"])
+        self.assertEqual([(p["article_id"], p["page_index"]) for p in pages], [("1950_11_002", 0), ("1950_11_009", 0)])
+        self.assertEqual(script.gold_lines(pages[0], 1000, 2000), [((100.0, 200.0, 600.0, 300.0), "فد")])
+        # Latest annotation, NFC + LABEL_MAP + whitespace, and the 1 px wide box is dropped like the dataset builder.
+        self.assertEqual([text for _, text in script.gold_lines(pages[1], 1000, 2000)], ["ايبو فد"])
+        self.assertEqual(script.load_test_pages(export, ["1950_11_009"])[0]["article_id"], "1950_11_009")
+
+    def test_page_evaluation_with_fake_models(self):
+        script = load_eval_script()
+        gold = [((100.0, 100.0, 1000.0, 130.0), "ايبو"), ((100.0, 150.0, 1000.0, 180.0), "ڤد")]
+        provider, _, _ = provider_with(column(100, 1000, [100, 150]), [("ايبو", 0.9), ("ڤ", 0.8)])
+        result, detected = script.evaluate_page(provider, page_png(), gold)
+
+        self.assertEqual(len(detected), 2)
+        self.assertEqual(result["line"]["edits"], 1)
+        self.assertEqual((result["line"]["precision"], result["line"]["recall"]), (1.0, 1.0))
+        self.assertEqual(result["page"]["edits"], 1)
+        summary = script.overall([{"article_id": "a", "page_index": 0, **result}])
+        self.assertAlmostEqual(summary["matched_line_cer"], 1 / 6, places=6)
+        self.assertEqual(summary["pages"], 1)
+
