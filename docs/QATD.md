@@ -69,6 +69,12 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 | OCR-09 | OCR provider output | Run the fixture provider, and the Tesseract provider with Tesseract mocked. | Each page returns lines of `{box, text, confidence}`. Fixture lines have no box or confidence. |  |
 | OCR-10 | Original OCR output is preserved | Finish a run, then try to write its stored OCR text again. | The stored text equals the provider output and the second write is refused. |  |
 | OCR-11 | One page fails OCR | Run a two-page article where page 2 has no OCR result. | Page 1 text is used, the OCR stage is marked incomplete, and the run ends as `needs_review`. |  |
+| OCR-12 | TrOCR provider output | Run the `trocr` provider with a fake detector and a fake recogniser. | Lines come back in reading order with `order`, box, text, confidence and `low_confidence`. A page with no detected box returns no lines and the recogniser is not called. |  |
+| OCR-13 | Training preprocessing is reused | Check reading order on synthetic layouts (two columns, a headline band, pieces of one printed line, adverts below the text), the crop margin, and the colour order. | Columns are read right to left, headlines first, adverts last. Each crop has a margin of 0.12 x box height, cut from the full page, in RGB; the detector gets BGR with conf 0.35 and `LINE_DETECTOR_IMGSZ`. |  |
+| OCR-14 | TrOCR decoding and confidence | Run real `generate()` on a tiny random model built in memory, greedy and beam. | One text and one confidence between 0 and 1 per crop, in batches of `OCR_BATCH_SIZE`, with `use_cache` on. Greedy confidence stops at the first end token. Output gets NFC and whitespace collapse but not `LABEL_MAP`. |  |
+| OCR-15 | Provider selection | Set and unset `OCR_MODEL_PATH` and `OCR_PROVIDER`; point the model or detector path at a missing file. | `trocr` is the default once `OCR_MODEL_PATH` is set, `OCR_PROVIDER` still wins, and a missing file is a configuration error (`503` on upload). |  |
+| OCR-16 | Low-confidence lines | Upload a page where one TrOCR line is below the threshold. | The line has `low_confidence: true` and `stages.ocr.low_confidence_lines` is 1. The run status is not changed by the flag while the threshold is uncalibrated. |  |
+| OCR-17 | Page-level OCR evaluation | Run `scripts/eval_page_cer.py` on the locked test articles; unit-test the metric functions. | Matched-line CER counts missed gold lines as full deletions and extra lines as full insertions. Page CER, detector precision and recall, and seconds per page are reported per page and overall. |  |
 
 ## Agent Pipeline Test Cases
 
@@ -161,7 +167,7 @@ The QA plan verifies the FYP prototype from upload to OCR, agent processing, sto
 
 | Area | Acceptance Criteria |
 | --- | --- |
-| OCR | Fine-tuned OCR reaches CER of at most 10% and character accuracy of at least 90% on the held-out test split (split by article). |
+| OCR | Fine-tuned OCR reaches CER of at most 10% and character accuracy of at least 90% on the held-out test split (split by article). The line-level CER uses hand-drawn boxes; the page-level matched-line CER from `scripts/eval_page_cer.py` (detected boxes) is reported next to it. |
 | Romanisation gate | Method A/B agreement is reported per item; items below 85% are flagged for human review. |
 | Evaluation method | Stage metrics use BLEU/chrF, human rubric, ROUGE, and F1 only. LLM-as-a-judge is not used. |
 | OCR benchmark | Fine-tuned OCR, Tesseract, and VLM OCR are compared where configured and references exist. |

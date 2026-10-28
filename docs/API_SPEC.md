@@ -356,7 +356,7 @@ model=google/gemini-2.5-flash
 - The file may be at most `MAX_UPLOAD_MB` megabytes (default 25). A request whose `Content-Length` is clearly over the limit is refused before the body is read.
 - The document must open and may have at most `MAX_UPLOAD_PAGES` pages (default 30).
 - The model and key checks are the same as for `/api/pipeline/run`, and they run before anything is stored.
-- The OCR provider is chosen on the server with `OCR_PROVIDER`. The client cannot choose it.
+- The OCR provider is chosen on the server: `OCR_PROVIDER` when set, otherwise `trocr` when `OCR_MODEL_PATH` is set, otherwise `tesseract`. The client cannot choose it. `ocr_provider` in the run record names the provider used.
 
 **Errors**
 
@@ -365,7 +365,7 @@ model=google/gemini-2.5-flash
 | `400` | The content is not a PDF, PNG or JPEG, or the model is not on the allowlist. |
 | `413` | The file is larger than `MAX_UPLOAD_MB`, or the document has more than `MAX_UPLOAD_PAGES` pages. |
 | `422` | The file has an accepted type but cannot be opened (damaged or password-protected PDF, damaged image), or the `file` field is missing. |
-| `503` | Live LLM calls are not available (same rule as `/api/pipeline/run`), or `OCR_PROVIDER` names an unknown provider. |
+| `503` | Live LLM calls are not available (same rule as `/api/pipeline/run`), `OCR_PROVIDER` names an unknown provider, or the `trocr` provider is chosen but its model folder or line detector file is missing. |
 
 Nothing is stored when the request is rejected.
 
@@ -396,7 +396,7 @@ Nothing is stored when the request is rejected.
   "ocr_provider": "tesseract",
   "stages": {
     "render": {"status": "completed", "duration": 1.9, "error": null, "attempts": 1, "pages": 4, "dpi": 300},
-    "ocr": {"status": "completed", "duration": 21.4, "error": null, "provider": "tesseract", "pages": 4, "failed_pages": [], "mean_confidence": 0.61},
+    "ocr": {"status": "completed", "duration": 21.4, "error": null, "provider": "tesseract", "pages": 4, "failed_pages": [], "mean_confidence": 0.61, "low_confidence_lines": 0},
     "romanisation": {"status": "completed", "duration": 2.2, "method_a": {}, "method_b": {}},
     "agreement_gate": {"status": "flagged", "gate_status": "flagged", "agreement": 0.71, "threshold": 0.85, "reason": "..."},
     "translation": {"status": "completed", "duration": 6.3, "error": null, "attempts": 1},
@@ -416,7 +416,7 @@ Nothing is stored when the request is rejected.
         "error": null,
         "duration": 5.2,
         "mean_confidence": 0.63,
-        "lines": [{"text": "...", "box": [112, 80, 1490, 52], "confidence": 0.66}]
+        "lines": [{"text": "...", "box": [112, 80, 1490, 52], "confidence": 0.66, "order": null, "low_confidence": null}]
       }
     ],
     "romanisation": {"text": "...", "method_a": {}, "method_b": {}, "agreement_gate": {}, "needs_human_review": true},
@@ -449,7 +449,7 @@ Nothing is stored when the request is rejected.
 
 The stages are always `render`, `ocr`, `romanisation`, `agreement_gate`, `translation`, `summary` and `knowledge`. `incomplete_stages` uses the same names, except that romanisation is reported per method (`romanisation_method_a`, `romanisation_method_b`), as on the text endpoint.
 
-In `ocr_pages`, `box` is `[left, top, width, height]` in pixels of the page image, and `confidence` is between 0 and 1. Both are `null` when the provider cannot supply them (the fixture provider). `outputs` is filled in as the stages finish, so a running run has only some of its keys.
+In `ocr_pages`, `box` is `[left, top, width, height]` in pixels of the page image, and `confidence` is between 0 and 1. Both are `null` when the provider cannot supply them (the fixture provider). `order` is the 1-based reading-order position of the line among the detected boxes, and `low_confidence` is true when `confidence` is below `OCR_CONFIDENCE_THRESHOLD`. Only the `trocr` provider fills these two; the others return `null`. The threshold is not calibrated yet, so `low_confidence` does not change the run status. `stages.ocr.low_confidence_lines` counts the flagged lines. `outputs` is filled in as the stages finish, so a running run has only some of its keys.
 
 **Errors:** `404` when the run does not exist.
 

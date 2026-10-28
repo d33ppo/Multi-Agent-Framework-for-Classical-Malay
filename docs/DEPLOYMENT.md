@@ -40,18 +40,21 @@ TESSERACT_CMD=
 
 JAWI_NEURAL_MODEL=mesolitica/jawi-nanot5-small-malaysian-cased
 
-OCR_MODEL_PATH=
+OCR_MODEL_PATH=models/trocr_v1
+LINE_DETECTOR_PATH=models/yolo/qalam_lines_cpu25.pt
+LINE_DETECTOR_IMGSZ=960
+OCR_NUM_BEAMS=1
 OCR_CONFIDENCE_THRESHOLD=0.60
 MAX_UPLOAD_MB=25
 MAX_UPLOAD_PAGES=30
 PDF_RENDER_DPI=300
-OCR_PROVIDER=tesseract
+OCR_PROVIDER=
 OCR_FIXTURE_DIR=data/ocr_fixtures
 STORAGE_DIR=storage
 JOB_WORKERS=1
 ```
 
-The list above includes variables planned for Supabase and the fine-tuned OCR model. The variables the code reads today are listed in `.env.example` at the repository root; copy it to `.env` to start.
+The list above includes variables planned for Supabase. The variables the code reads today are listed in `.env.example` at the repository root; copy it to `.env` to start.
 
 ### Backend Safety Settings
 
@@ -82,8 +85,16 @@ These variables are read by the document upload route and the background job run
 | `MAX_UPLOAD_MB` | `25` | Largest file accepted by `POST /api/documents`. Larger files are rejected with `413`. |
 | `MAX_UPLOAD_PAGES` | `30` | Most pages one uploaded document may have. More pages are rejected with `413`. |
 | `PDF_RENDER_DPI` | `300` | Resolution used to render PDF pages to PNG images for OCR. |
-| `OCR_PROVIDER` | `tesseract` | `tesseract` runs the local Tesseract baseline. `fixture` reads saved text instead of running a model. |
+| `OCR_PROVIDER` | see note | `trocr` runs the fine-tuned TrOCR model, `tesseract` runs the local Tesseract baseline, `fixture` reads saved text instead of running a model. When unset: `trocr` if `OCR_MODEL_PATH` is set, otherwise `tesseract`. |
 | `OCR_FIXTURE_DIR` | `data/ocr_fixtures` | Folder read by the fixture provider. |
+| `OCR_MODEL_PATH` | empty | Folder with the fine-tuned TrOCR model and processor, for example `models/trocr_v1`. Setting it makes `trocr` the default provider. |
+| `LINE_DETECTOR_PATH` | `models/yolo/qalam_lines_cpu25.pt` | YOLO line detector weights used by `trocr`. |
+| `LINE_DETECTOR_IMGSZ` | `960` | Image size passed to the detector. Keep it at the size the detector was trained at. |
+| `OCR_NUM_BEAMS` | `1` | TrOCR decoding. `1` is greedy, the decoding behind the reported test CER. |
+| `OCR_BATCH_SIZE` | `4` | Line crops decoded together. Lower it if the machine runs out of memory. |
+| `OCR_TORCH_THREADS` | torch default | CPU threads used by torch for TrOCR. |
+| `OCR_DEVICE` | `auto` | `auto` (CUDA when available, otherwise CPU), `cpu` or `cuda`. |
+| `OCR_CONFIDENCE_THRESHOLD` | `0.60` | Lines with a TrOCR confidence below this are flagged `low_confidence`. Not calibrated yet (task 3.6): the flag is a hint for the reviewer and does not change the run status. |
 | `STORAGE_DIR` | `storage` | Folder for uploads, rendered pages, OCR output and run records. It is listed in `.gitignore`. |
 | `JOB_WORKERS` | `1` | Number of uploaded documents processed at the same time. Extra uploads wait. |
 
@@ -178,6 +189,35 @@ For fine-tuning OCR:
 1. Use Google Colab when GPU is needed.
 2. Keep model checkpoints versioned separately from raw manuscript files.
 3. Export the selected model checkpoint path into `OCR_MODEL_PATH`.
+
+### Fine-tuned OCR Models
+
+The fine-tuned TrOCR model and the YOLO line detector stay on Google Drive and are not committed (`models/` and `*.pt` are in `.gitignore`). Copy them into the repository like this:
+
+```text
+models/
+  trocr_v1/                  the saved "best" folder from the TrOCR notebook
+    config.json
+    generation_config.json
+    model.safetensors
+    preprocessor_config.json and the tokenizer files written by processor.save_pretrained
+  yolo/
+    qalam_lines_cpu25.pt     the line detector, trained at imgsz 960
+```
+
+Then set `OCR_MODEL_PATH=models/trocr_v1` in `.env`. Uploads now use the `trocr` provider. `LINE_DETECTOR_PATH` defaults to the path above and `LINE_DETECTOR_IMGSZ` to 960. Install `ultralytics` and `transformers` from `requirements.txt`. Both models load from local files only and are loaded once, on the first uploaded page, so the first page takes longer.
+
+If a model file is missing, uploads return `503` with the missing path. Set `OCR_PROVIDER=tesseract` to run the baseline instead.
+
+### Page-level OCR Evaluation
+
+`scripts/eval_page_cer.py` runs the full TrOCR provider (detector, reading order, crops, recogniser) on the full-resolution page PNGs of the locked test articles and compares the result with the Label Studio export:
+
+```bash
+python scripts/eval_page_cer.py --export exports/<label_studio_export>.json --pages-base <dataset folder with <article>/pages/page_NN.png>
+```
+
+It runs on CPU by default so the seconds per page are comparable. `--limit 2` evaluates two pages for a quick check. Results go to `ocr_training/results/page_eval_v1/`: `page_eval_greedy.json` (metrics only, can be committed), `page_eval_greedy.csv` and `predictions_greedy.jsonl` (texts, ignored by git).
 
 ## Run Commands
 

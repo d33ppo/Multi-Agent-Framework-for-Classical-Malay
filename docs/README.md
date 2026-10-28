@@ -69,6 +69,7 @@ project-root/
 5. Configure Supabase tables using [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).
 6. Prepare a small pilot dataset with manually verified gold-standard text.
 7. Build the Method B romanisation dictionary (see [DEPLOYMENT.md](DEPLOYMENT.md#romanisation-method-b-dictionary)).
+8. Copy the fine-tuned OCR models into `models/` and set `OCR_MODEL_PATH` (see [DEPLOYMENT.md](DEPLOYMENT.md#fine-tuned-ocr-models)). The models are not committed. Without them, uploads use the Tesseract baseline.
 
 ## Run Commands
 
@@ -88,6 +89,9 @@ python jawi_dictionary.py coverage data/ground_truth/*.txt
 
 # Offline stage evaluation metrics
 python stage_metrics.py romanisation eval/romanisation.jsonl
+
+# Page-level OCR evaluation of the TrOCR provider on the locked test articles
+python scripts/eval_page_cer.py --export exports/<label_studio_export>.json --pages-base <dataset folder>
 
 # Tests
 pytest
