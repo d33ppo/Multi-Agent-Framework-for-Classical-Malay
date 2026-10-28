@@ -21,13 +21,23 @@ Metrics, per page and overall:
       reading order, gold lines in the order of the export, so it is order sensitive
   (c) detector precision and recall at IoU >= 0.5
   (d) seconds per page (model loading reported separately)
+  (e) an error breakdown: recognition CER on matched lines only, edits from
+      matched lines more than 15% longer or shorter than gold, lines with a new
+      5+ repeated-character run, extra lines that touch a gold box or not, and
+      missed lines partly covered by a prediction or not detected at all
+
+--gold-boxes skips the detector and runs the Label Studio boxes, in annotation
+order, through the same crop and TrOCR path. Detection and reading order then
+drop out, so the matched-line CER is the recognition error on hand-drawn boxes
+over the whole page; the JSON says "boxes": "gold" and the files get a
+_gold_boxes suffix. The default is "boxes": "detected".
 
 The page PNGs are the 400 DPI renders the models were trained on, the same DPI
 an upload is rendered at for the trocr provider. The DPI is recorded in the
 JSON: --page-dpi as stated, plus the DPI stored in each PNG when it has one.
 
-Outputs in --out-dir: page_eval_<decoding>.json and .csv (metrics only, no
-Qalam text) and predictions_<decoding>.jsonl (texts, gitignored).
+Outputs in --out-dir: page_eval_<decoding>[_gold_boxes].json and .csv (metrics
+only, no Qalam text) and predictions_<decoding>[_gold_boxes].jsonl (texts, gitignored).
 
 Usage:
     python scripts/eval_page_cer.py --export exports/label_studio_export.json --pages-base data/dataset
@@ -87,15 +97,19 @@ def gold_lines(page: dict, width: int, height: int) -> list[tuple]:
     return lines
 
 
-def evaluate_page(provider, png: bytes, gold: list[tuple]) -> tuple[dict, list]:
+def evaluate_page(provider, png: bytes, gold: list[tuple], gold_boxes: bool = False) -> tuple[dict, list]:
+    """Run the provider on one page (detected boxes, or the gold boxes in export order) and score it."""
     started = time.perf_counter()
-    detected = provider.read_page(png)
+    detected = provider.read_boxes(png, [box for box, _ in gold]) if gold_boxes else provider.read_page(png)
     seconds = time.perf_counter() - started
-    pred = [((*line.xyxy, line.detector_confidence), line.text) for line in detected]
+    pred = [(line.xyxy if line.detector_confidence is None else (*line.xyxy, line.detector_confidence), line.text)
+            for line in detected]
     line_metrics = stage_metrics.matched_line_cer(pred, gold, IOU_THRESHOLD)
+    errors = stage_metrics.line_error_breakdown(pred, gold, IOU_THRESHOLD)
     pred_text = "\n".join(line.text for line in detected if line.text)  # what the product passes on
     gold_text = "\n".join(text for _, text in gold)
-    return {"seconds": round(seconds, 3), "line": line_metrics, "page": stage_metrics.page_cer(pred_text, gold_text)}, detected
+    page = stage_metrics.page_cer(pred_text, gold_text)
+    return {"seconds": round(seconds, 3), "line": line_metrics, "page": page, "errors": errors}, detected
 
 
 def overall(rows: list[dict]) -> dict:
@@ -115,6 +129,7 @@ def overall(rows: list[dict]) -> dict:
         "seconds_per_page_mean": round(statistics.mean(seconds), 3) if seconds else None,
         "seconds_per_page_median": round(statistics.median(seconds), 3) if seconds else None,
         **total,
+        "errors": stage_metrics.sum_error_breakdowns([r["errors"] for r in rows]),
     }
 
 
@@ -156,6 +171,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="evaluate only the first N pages, for a quick check")
     parser.add_argument("--page-dpi", type=int, default=TROCR_RENDER_DPI,
                         help=f"DPI the page PNGs were rendered at (default {TROCR_RENDER_DPI}), recorded in the JSON")
+    parser.add_argument("--gold-boxes", action="store_true",
+                        help="skip the detector: recognise the Label Studio boxes in annotation order")
     args = parser.parse_args()
 
     from ocr_trocr import TrOCROCRProvider, decode_page
@@ -165,10 +182,12 @@ def main() -> None:
     provider = TrOCROCRProvider(args.model, args.detector, imgsz=args.imgsz, num_beams=args.beams,
                                 batch_size=args.batch_size, device=args.device, threads=args.threads)
     started = time.perf_counter()
-    provider.load()
+    provider.load(detector=not args.gold_boxes)
     load_seconds = round(time.perf_counter() - started, 2)
     decoding = "greedy" if provider.num_beams == 1 else f"beam{provider.num_beams}"
-    print(f"Models loaded in {load_seconds}s. {len(pages)} test pages, decoding {decoding}.")
+    boxes = "gold" if args.gold_boxes else "detected"
+    tag = f"{decoding}_gold_boxes" if args.gold_boxes else decoding
+    print(f"Models loaded in {load_seconds}s. {len(pages)} test pages, decoding {decoding}, {boxes} boxes.")
 
     rows, predictions = [], []
     for p in pages:
@@ -176,19 +195,21 @@ def main() -> None:
         png = png_path.read_bytes()
         height, width = decode_page(png).shape[:2]
         gold = gold_lines(p, width, height)
-        result, detected = evaluate_page(provider, png, gold)
+        result, detected = evaluate_page(provider, png, gold, gold_boxes=args.gold_boxes)
         rows.append({"article_id": p["article_id"], "page_index": p["page_index"],
                      "width": width, "height": height, "png_dpi": png_dpi(png), **result})
         predictions.append({
             "article_id": p["article_id"], "page_index": p["page_index"],
             "pred": [{"order": d.order, "xyxy": [round(v, 1) for v in d.xyxy], "text": d.text,
-                      "confidence": d.confidence, "detector_confidence": round(d.detector_confidence, 4)}
+                      "confidence": d.confidence,
+                      "detector_confidence": None if d.detector_confidence is None else round(d.detector_confidence, 4)}
                      for d in detected],
             "gold": [{"xyxy": [round(v, 1) for v in box], "text": text} for box, text in gold],
         })
         line = result["line"]
-        print(f"{p['article_id']} p{p['page_index']:02d}: matched-line CER {line['cer']}, page CER "
-              f"{result['page']['cer']}, P {line['precision']} R {line['recall']}, {result['seconds']}s")
+        print(f"{p['article_id']} p{p['page_index']:02d}: matched-line CER {line['cer']}, recognition CER "
+              f"{result['errors']['recognition']['cer']}, page CER {result['page']['cer']}, "
+              f"P {line['precision']} R {line['recall']}, {result['seconds']}s")
 
     summary = overall(rows)
     stored_dpis = sorted({r["png_dpi"] for r in rows if r["png_dpi"]})
@@ -202,8 +223,9 @@ def main() -> None:
     report = {
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "git_commit": _git_commit(),
+        "boxes": boxes,
         "config": {
-            "model": provider.model_path.name, "detector": provider.detector_path.name,
+            "model": provider.model_path.name, "detector": None if args.gold_boxes else provider.detector_path.name,
             "detector_imgsz": provider.imgsz, "detector_conf": 0.35, "iou_threshold": IOU_THRESHOLD,
             "decoding": decoding, "num_beams": provider.num_beams, "batch_size": provider.batch_size,
             "device": args.device, "torch_threads": torch.get_num_threads(), "test_articles": test_articles,
@@ -217,17 +239,18 @@ def main() -> None:
     }
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    (out / f"page_eval_{decoding}.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
-    with open(out / f"page_eval_{decoding}.csv", "w", encoding="utf-8", newline="") as handle:
+    (out / f"page_eval_{tag}.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    with open(out / f"page_eval_{tag}.csv", "w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["article_id", "page_index", "gold_lines", "pred_lines", "matched_lines", "precision",
-                         "recall", "matched_line_cer", "page_cer", "gold_chars", "seconds"])
+        writer.writerow(["article_id", "page_index", "boxes", "gold_lines", "pred_lines", "matched_lines",
+                         "precision", "recall", "matched_line_cer", "recognition_cer", "page_cer", "gold_chars",
+                         "seconds"])
         for r in rows:
             line = r["line"]
-            writer.writerow([r["article_id"], r["page_index"], line["gold_lines"], line["pred_lines"],
+            writer.writerow([r["article_id"], r["page_index"], boxes, line["gold_lines"], line["pred_lines"],
                              line["matched_lines"], line["precision"], line["recall"], line["cer"],
-                             r["page"]["cer"], line["gold_chars"], r["seconds"]])
-    with open(out / f"predictions_{decoding}.jsonl", "w", encoding="utf-8") as handle:
+                             r["errors"]["recognition"]["cer"], r["page"]["cer"], line["gold_chars"], r["seconds"]])
+    with open(out / f"predictions_{tag}.jsonl", "w", encoding="utf-8") as handle:
         for item in predictions:
             handle.write(json.dumps(item, ensure_ascii=False) + "\n")
 

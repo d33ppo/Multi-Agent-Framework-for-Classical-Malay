@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 from statistics import mean, stdev
@@ -176,6 +177,103 @@ def matched_line_cer(pred_lines: list[tuple], gold_lines: list[tuple], threshold
         "precision": _ratio(len(pairs), len(pred_lines)),
         "recall": _ratio(len(pairs), len(gold_lines)),
     }
+
+
+LENGTH_MISMATCH_FRAC = 0.15  # a prediction this much longer or shorter than gold
+MIN_REPEAT_RUN = 5  # this many identical characters in a row
+_REPEAT_RUN_RE = re.compile(r"(.)\1{%d,}" % (MIN_REPEAT_RUN - 1), re.DOTALL)
+
+
+def _intersects(a, b) -> bool:
+    return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
+
+
+def _new_repeat_run(pred: str, gold: str) -> bool:
+    """True when pred has a run of MIN_REPEAT_RUN+ identical characters that gold does not contain."""
+    return any(match.group(0) not in gold for match in _REPEAT_RUN_RE.finditer(pred))
+
+
+def line_error_breakdown(pred_lines: list[tuple], gold_lines: list[tuple], threshold: float = 0.5) -> dict:
+    """
+    Where the matched-line CER edits come from. Lines are (box, text); matching is
+    match_lines at the same threshold. The categories overlap (a line can be both
+    too long and repeating), so they do not add up to the total.
+
+    - recognition: matched pairs only, edits / gold characters of the matched lines
+    - length_mismatch: matched pairs whose prediction is more than 15% longer or shorter than gold
+    - repeated_run: predicted lines with a 5+ identical-character run that their gold line
+      does not contain (an extra line is compared with empty gold)
+    - extra: unmatched predictions that touch a gold box vs touch none
+    - missed: unmatched gold lines that a prediction partly covers vs that no prediction touches
+    """
+    from Levenshtein import distance
+
+    pred_boxes = [box for box, _ in pred_lines]
+    gold_boxes = [box for box, _ in gold_lines]
+    pairs = match_lines(pred_boxes, gold_boxes, threshold)
+    matched_pred = {i for i, _ in pairs}
+    matched_gold = {j for _, j in pairs}
+
+    def bucket() -> dict:
+        return {"lines": 0, "edits": 0}
+
+    result = {
+        "recognition": {"lines": 0, "edits": 0, "gold_chars": 0},
+        "length_mismatch": {"longer": bucket(), "shorter": bucket()},
+        "repeated_run": bucket(),
+        "extra": {"overlaps_gold": bucket(), "no_gold_overlap": bucket()},
+        "missed": {"partly_covered": bucket(), "not_detected": bucket()},
+    }
+
+    def add(target: dict, edits: int) -> None:
+        target["lines"] += 1
+        target["edits"] += edits
+
+    for i, j in pairs:
+        pred, gold = pred_lines[i][1], gold_lines[j][1]
+        edits = distance(gold, pred)
+        add(result["recognition"], edits)
+        result["recognition"]["gold_chars"] += len(gold)
+        if len(pred) > (1 + LENGTH_MISMATCH_FRAC) * len(gold):
+            add(result["length_mismatch"]["longer"], edits)
+        elif len(pred) < (1 - LENGTH_MISMATCH_FRAC) * len(gold):
+            add(result["length_mismatch"]["shorter"], edits)
+        if _new_repeat_run(pred, gold):
+            add(result["repeated_run"], edits)
+
+    for i, (box, text) in enumerate(pred_lines):
+        if i in matched_pred:
+            continue
+        touches = any(_intersects(box, gold) for gold in gold_boxes)
+        add(result["extra"]["overlaps_gold" if touches else "no_gold_overlap"], len(text))
+        if _new_repeat_run(text, ""):
+            add(result["repeated_run"], len(text))
+
+    for j, (box, text) in enumerate(gold_lines):
+        if j in matched_gold:
+            continue
+        covered = any(_intersects(box, pred) for pred in pred_boxes)
+        add(result["missed"]["partly_covered" if covered else "not_detected"], len(text))
+
+    result["recognition"]["cer"] = _ratio(result["recognition"]["edits"], result["recognition"]["gold_chars"])
+    return result
+
+
+def sum_error_breakdowns(breakdowns: list[dict]) -> dict:
+    """Add up per-page line_error_breakdown results and recompute the recognition CER."""
+    def add(total: dict, part: dict) -> None:
+        for key, value in part.items():
+            if isinstance(value, dict):
+                add(total.setdefault(key, {}), value)
+            elif key != "cer":
+                total[key] = total.get(key, 0) + value
+
+    total: dict = {}
+    for breakdown in breakdowns:
+        add(total, breakdown)
+    if "recognition" in total:
+        total["recognition"]["cer"] = _ratio(total["recognition"]["edits"], total["recognition"]["gold_chars"])
+    return total
 
 
 def page_cer(pred_text: str, gold_text: str) -> dict:

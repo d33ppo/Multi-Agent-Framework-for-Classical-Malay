@@ -9,7 +9,10 @@ nothing touches the network.
 import importlib.util
 import json
 import os
+import sys
+from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import cv2
 import numpy as np
@@ -88,8 +91,8 @@ class FakeRecogniser:
         return [(f"line {i}", 0.9) for i in range(1, len(crops) + 1)]
 
 
-def provider_with(boxes, answers=None, **kwargs):
-    detector, recogniser = FakeYOLO(boxes), FakeRecogniser(answers)
+def provider_with(boxes, answers=None, detector=None, **kwargs):
+    detector, recogniser = detector or FakeYOLO(boxes), FakeRecogniser(answers)
     return TrOCROCRProvider(detector=detector, recogniser=recogniser, **kwargs), detector, recogniser
 
 
@@ -474,3 +477,112 @@ class EvalScriptTests(TempDirTestCase):
         self.assertAlmostEqual(summary["matched_line_cer"], 1 / 6, places=6)
         self.assertEqual(summary["pages"], 1)
 
+    def test_gold_boxes_skip_the_detector_and_keep_annotation_order(self):
+        script = load_eval_script()
+        gold = [((100.0, 100.0, 540.0, 130.0), "ايبو"), ((560.0, 100.0, 1000.0, 130.0), "فد")]  # left box first
+        provider, _, recogniser = provider_with([], [("ايبو", 0.9), ("فد", 0.8)], detector=RaisingDetector())
+        result, detected = script.evaluate_page(provider, page_png(), gold, gold_boxes=True)
+
+        self.assertEqual([(d.order, d.xyxy, d.detector_confidence) for d in detected],
+                         [(1, gold[0][0], None), (2, gold[1][0], None)])
+        self.assertEqual(recogniser.crops[0].shape, line_crop(np.zeros((PAGE_H, PAGE_W, 3)), gold[0][0]).shape)
+        self.assertEqual((result["line"]["cer"], result["line"]["precision"], result["line"]["recall"]), (0.0, 1.0, 1.0))
+        self.assertEqual(result["page"]["cer"], 0.0)  # both texts follow the export order
+        self.assertEqual(result["errors"]["extra"]["no_gold_overlap"]["lines"], 0)
+
+    def test_main_with_gold_boxes_writes_a_gold_report(self):
+        script = load_eval_script()
+        export = self.write_export()
+        for article in ("1950_11_002", "1950_11_009"):
+            folder = self.tmp / "pages" / article / "pages"
+            folder.mkdir(parents=True)
+            (folder / "page_00.png").write_bytes(page_png(width=1000, height=2000))
+        articles = self.tmp / "test_articles.json"
+        articles.write_text(json.dumps(["1950_11_002", "1950_11_009"]), encoding="utf-8")
+
+        provider, _, _ = provider_with([], detector=RaisingDetector())
+        provider.model_path, provider.detector_path = Path("trocr_v1"), Path("lines.pt")
+        self.patch("ocr_trocr.TrOCROCRProvider", lambda *args, **kwargs: provider)
+        out = self.tmp / "out"
+        argv = ["eval_page_cer.py", "--export", str(export), "--pages-base", str(self.tmp / "pages"),
+                "--test-articles", str(articles), "--out-dir", str(out), "--gold-boxes"]
+        with mock.patch.object(sys, "argv", argv), mock.patch("builtins.print"):
+            script.main()
+
+        report = json.loads((out / "page_eval_greedy_gold_boxes.json").read_text(encoding="utf-8"))
+        self.assertEqual((report["boxes"], report["config"]["detector"]), ("gold", None))
+        self.assertEqual(report["overall"]["gold_lines"], 2)
+        self.assertEqual((report["overall"]["detector_precision"], report["overall"]["detector_recall"]), (1.0, 1.0))
+        self.assertIn("recognition", report["overall"]["errors"])
+        self.assertEqual(report["overall"]["errors"]["recognition"]["lines"], 2)
+        self.assertTrue((out / "page_eval_greedy_gold_boxes.csv").is_file())
+        self.assertFalse((out / "page_eval_greedy.json").exists())  # the detector run is not overwritten
+
+
+class RaisingDetector:
+    def predict(self, *args, **kwargs):
+        raise AssertionError("the detector must not run")
+
+
+class GoldBoxProviderTests(TempDirTestCase):
+    def test_read_boxes_loads_only_trocr(self):
+        detector_file = self.tmp / "lines.pt"
+        detector_file.write_bytes(b"")
+        self.patch("ocr_trocr.load_detector", mock.Mock(side_effect=AssertionError("detector loaded")))
+        provider = TrOCROCRProvider(detector_path=detector_file, recogniser=FakeRecogniser())
+        lines = provider.read_boxes(page_png(), [(100.0, 100.0, 1000.0, 130.0)])
+        self.assertEqual([(line.text, line.detector_confidence) for line in lines], [("line 1", None)])
+        self.assertEqual(provider.read_boxes(page_png(), []), [])
+
+    def test_processor_is_loaded_with_the_slow_tokenizer(self):
+        model = mock.MagicMock()
+        model.to.return_value = model
+        with mock.patch("transformers.TrOCRProcessor.from_pretrained") as processor_load, \
+                mock.patch("transformers.VisionEncoderDecoderModel.from_pretrained", return_value=model) as model_load:
+            TrOCRRecogniser.load(self.tmp, device="cpu")
+        self.assertEqual(processor_load.call_args.kwargs, {"local_files_only": True, "use_fast": False})
+        self.assertEqual(model_load.call_args.kwargs, {"local_files_only": True})
+
+
+class ErrorBreakdownTests(TempDirTestCase):
+    GOLD = [((0, 0, 100, 20), "abcdefghij"),
+            ((0, 30, 100, 50), "abcdefghij"),
+            ((0, 60, 100, 80), "abcdefghij"),
+            ((0, 90, 100, 110), "klmn"),      # missed, but a small prediction touches it
+            ((0, 500, 100, 520), "opqr")]     # missed, nothing near it
+    PRED = [((0, 0, 100, 20, 0.9), "abcdefghij"),           # exact
+            ((0, 30, 100, 50, 0.9), "abcdefghijbbbbbb"),    # 60% longer, new run of six b, 6 edits
+            ((0, 60, 100, 80, 0.9), "abcde"),               # 50% shorter, 5 edits
+            ((0, 95, 30, 105, 0.9), "zz"),                  # extra, touches "klmn" (IoU 0.15)
+            ((500, 500, 600, 520, 0.9), "yyyyy")]           # extra, touches nothing, run of five y
+
+    def test_breakdown_categories(self):
+        errors = stage_metrics.line_error_breakdown(self.PRED, self.GOLD)
+        self.assertEqual(errors["recognition"], {"lines": 3, "edits": 11, "gold_chars": 30, "cer": round(11 / 30, 6)})
+        self.assertEqual(errors["length_mismatch"], {"longer": {"lines": 1, "edits": 6}, "shorter": {"lines": 1, "edits": 5}})
+        self.assertEqual(errors["repeated_run"], {"lines": 2, "edits": 11})
+        self.assertEqual(errors["extra"], {"overlaps_gold": {"lines": 1, "edits": 2}, "no_gold_overlap": {"lines": 1, "edits": 5}})
+        self.assertEqual(errors["missed"], {"partly_covered": {"lines": 1, "edits": 4}, "not_detected": {"lines": 1, "edits": 4}})
+
+    def test_recognition_extra_and_missed_add_up_to_the_matched_line_cer(self):
+        errors = stage_metrics.line_error_breakdown(self.PRED, self.GOLD)
+        total = (errors["recognition"]["edits"]
+                 + sum(b["edits"] for b in errors["extra"].values())
+                 + sum(b["edits"] for b in errors["missed"].values()))
+        self.assertEqual(total, stage_metrics.matched_line_cer(self.PRED, self.GOLD)["edits"])
+
+    def test_repeat_run_already_in_gold_and_small_length_changes_are_not_flagged(self):
+        gold = [((0, 0, 100, 20), "aaaaa bcdefghij")]
+        pred = [((0, 0, 100, 20, 0.9), "aaaaa bcdefghi")]   # 7% shorter, run is in gold
+        errors = stage_metrics.line_error_breakdown(pred, gold)
+        self.assertEqual(errors["repeated_run"]["lines"], 0)
+        self.assertEqual(errors["length_mismatch"]["shorter"]["lines"], 0)
+        self.assertEqual(errors["recognition"]["edits"], 1)
+
+    def test_page_breakdowns_add_up(self):
+        page = stage_metrics.line_error_breakdown(self.PRED, self.GOLD)
+        total = stage_metrics.sum_error_breakdowns([page, page])
+        self.assertEqual(total["recognition"]["edits"], 22)
+        self.assertEqual(total["recognition"]["cer"], page["recognition"]["cer"])
+        self.assertEqual(total["missed"]["not_detected"], {"lines": 2, "edits": 8})
+        self.assertEqual(stage_metrics.sum_error_breakdowns([]), {})

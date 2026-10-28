@@ -221,6 +221,20 @@ python scripts/eval_page_cer.py --export exports/<label_studio_export>.json --pa
 
 The page PNGs should be the 400 DPI renders used for training, which is also the DPI an upload is rendered at for `trocr`. `--page-dpi` (default 400) is recorded in the JSON together with the DPI stored in the PNG files, and the script warns when they differ. It runs on CPU by default so the seconds per page are comparable. `--limit 2` evaluates two pages for a quick check. Results go to `ocr_training/results/page_eval_v1/`: `page_eval_greedy.json` (metrics only, can be committed), `page_eval_greedy.csv` and `predictions_greedy.jsonl` (texts, ignored by git).
 
+`--gold-boxes` skips the detector and sends the hand-drawn Label Studio boxes, in annotation order, through the same crop and TrOCR path. It loads only TrOCR. Comparing it with the default run separates recognition error from detection and reading-order error. The JSON then has `"boxes": "gold"` (the default run has `"boxes": "detected"`) and the files are named `page_eval_greedy_gold_boxes.*`, so the detector run is not overwritten.
+
+Each page and the overall summary have an `errors` breakdown. The categories can overlap, so they are not meant to add up:
+
+| Key | Meaning |
+| --- | --- |
+| `recognition` | Matched lines only: edits, gold characters and CER. This is the recognition error on the lines the detector found. |
+| `length_mismatch.longer`, `.shorter` | Matched lines whose prediction is more than 15% longer or shorter than the gold line: line count and their edits. |
+| `repeated_run` | Predicted lines with a run of 5 or more identical characters that their gold line does not contain (a typical decoding loop). An extra line is compared with empty gold. |
+| `extra.overlaps_gold`, `.no_gold_overlap` | Predicted lines with no IoU 0.5 match: those that touch a gold box (usually a split or badly placed line) and those that touch none (usually noise, rules or images). `edits` is their character count. |
+| `missed.partly_covered`, `.not_detected` | Gold lines with no IoU 0.5 match: those that some prediction touches and those that no prediction touches. `edits` is their character count. |
+
+`recognition.edits` plus all `extra` and `missed` edits equals the matched-line CER edits.
+
 ## Run Commands
 
 ```bash
