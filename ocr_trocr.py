@@ -150,7 +150,8 @@ class TrOCRRecogniser:
 
         if threads:
             torch.set_num_threads(threads)
-        processor = TrOCRProcessor.from_pretrained(str(model_dir), local_files_only=True)
+        # The slow tokenizer is the one the model was trained and evaluated with.
+        processor = TrOCRProcessor.from_pretrained(str(model_dir), local_files_only=True, use_fast=False)
         model = VisionEncoderDecoderModel.from_pretrained(str(model_dir), local_files_only=True)
         return cls(model, processor, device=device, **kwargs)
 
@@ -191,7 +192,7 @@ class TrOCRRecogniser:
 class DetectedLine:
     order: int  # 1-based position in reading order among the detected boxes
     xyxy: tuple[float, float, float, float]  # page pixels
-    detector_confidence: float
+    detector_confidence: float | None  # None when the box was given, not detected
     text: str
     confidence: float | None
 
@@ -232,16 +233,16 @@ class TrOCROCRProvider:
         self._recogniser = recogniser
         self._lock = threading.Lock()
 
-    def load(self) -> None:
-        """Load both models now instead of on the first page."""
+    def load(self, detector: bool = True) -> None:
+        """Load the models now instead of on the first page. detector=False loads only TrOCR."""
         with self._lock:
-            self._load()
+            self._load(detector)
 
-    def _load(self) -> None:
-        if self._detector is not None and self._recogniser is not None:
+    def _load(self, detector: bool = True) -> None:
+        if (self._detector is not None or not detector) and self._recogniser is not None:
             return
         device = choose_device(self.device_setting)
-        if self._detector is None:
+        if self._detector is None and detector:
             self._detector = load_detector(self.detector_path, device)
         if self._recogniser is None:
             self._recogniser = TrOCRRecogniser.load(
@@ -258,13 +259,27 @@ class TrOCROCRProvider:
                 yp.predict_boxes(self._detector, page_bgr, conf=DETECTOR_CONF, imgsz=self.imgsz),
                 page_bgr.shape[1],
             )
-            if not boxes:
-                return []
-            # The recogniser was trained on crops read with PIL, which are RGB.
-            page_rgb = cv2.cvtColor(page_bgr, cv2.COLOR_BGR2RGB)
-            results = self._recogniser([line_crop(page_rgb, box) for box in boxes])
+            return self._recognise_boxes(page_bgr, boxes)
+
+    def read_boxes(self, png: bytes, boxes: list) -> list[DetectedLine]:
+        """
+        Recognise the given (x1, y1, x2, y2) boxes, in the given order, without the detector.
+        Same crop and TrOCR path as read_page; the evaluation uses it with hand-drawn boxes.
+        """
+        page_bgr = decode_page(png)
+        with self._lock:
+            self._load(detector=False)
+            return self._recognise_boxes(page_bgr, [(*box[:4], None) for box in boxes])
+
+    def _recognise_boxes(self, page_bgr: np.ndarray, boxes: list) -> list[DetectedLine]:
+        if not boxes:
+            return []
+        # The recogniser was trained on crops read with PIL, which are RGB.
+        page_rgb = cv2.cvtColor(page_bgr, cv2.COLOR_BGR2RGB)
+        results = self._recogniser([line_crop(page_rgb, box) for box in boxes])
         return [
-            DetectedLine(order, tuple(float(v) for v in box[:4]), float(box[4]), text, confidence)
+            DetectedLine(order, tuple(float(v) for v in box[:4]), None if box[4] is None else float(box[4]),
+                         text, confidence)
             for order, (box, (text, confidence)) in enumerate(zip(boxes, results), start=1)
         ]
 
