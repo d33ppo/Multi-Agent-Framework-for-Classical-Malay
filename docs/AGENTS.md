@@ -53,8 +53,8 @@ docs/          # Documentation
 The stack above is the target. This is what exists in the repo today. Keep this section consistent with "Current Progress" and "Dataset" in `CLAUDE.md`.
 
 - Dataset: only issues 1950_11 and 1950_12 have human-corrected ground truth. Issues 1950_07, 1950_09 and 1950_10 are uncorrected and are excluded unless corrected text arrives.
-- Dataset split: by article into train, validation and test, not by issue. Line count is TBD from the annotation export.
-- TrOCR: no training or inference code in this repo yet. OCR for uploads runs behind an `OCRProvider` interface (`ocr_providers.py`) with a Tesseract baseline and a fixture provider; TrOCR will be added as another provider.
+- Dataset split: by article into train, validation and test, not by issue. Dataset v1.0 has 4,180 lines from 77 pages (3,173 train, 366 validation, 641 test); locked test articles are in `ocr_training/splits/test_articles.json`.
+- TrOCR: training code is in `ocr_training/` (weights stay on Drive). TrOCR v1 test line CER is 3.78% (greedy) against Tesseract 64.31%. Inference in the app is not wired yet: OCR for uploads runs behind an `OCRProvider` interface (`ocr_providers.py`) with a Tesseract baseline and a fixture provider; TrOCR will be added as another provider.
 - Agent pipeline: implemented in `pipeline_runner.py` with Method A/B romanisation, agreement gate, fault handler, and concurrent summarisation and knowledge extraction.
 - LangChain: used for the three LLM stages. `llm_text_runtime.py` calls OpenRouter through `langchain-openai` `ChatOpenAI`, and `pipeline_runner.build_llm_chain` expresses Translation, then Summarisation and Knowledge Extraction, as one runnable chain with `RunnableParallel`. Romanisation and the agreement gate are plain Python. LangGraph is not used.
 - Frontend: a single static `frontend/index.html`, not a React app yet.

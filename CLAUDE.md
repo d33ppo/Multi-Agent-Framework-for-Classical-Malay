@@ -42,7 +42,7 @@ Runtime Fault Handler wraps every stage: on exception/timeout/empty output it lo
 - **Ground truth columns:** `file_name`, `rumi_sentence`, `jawi_autotransliterated`, `jawi_corrected`
 - **Human-corrected ground truth:** issues 1950_11 and 1950_12 only. Issues 1950_07, 1950_09 and 1950_10 are uncorrected and are excluded unless corrected text arrives
 - **Split:** by article into train, validation and test (not by issue)
-- **Line count:** TBD, to be taken from the annotation export
+- **Line count (dataset v1.0):** 4,180 lines from 77 annotated pages: 3,173 train, 366 validation, 641 test. Locked test articles are in `ocr_training/splits/test_articles.json`
 - **Gold standard for romanisation evaluation:** existing Majalah Qalam romanised PDFs
 
 ### Evaluation Plan
@@ -80,7 +80,7 @@ Total corpus line count is TBD — compute from annotation data (average lines/p
 The Stack list above is the target stack. This section states what exists in the repo today.
 
 - **Dataset preparation:** 2 issues (1950_11, 1950_12) have human-corrected ground truth. 1950_07, 1950_09 and 1950_10 are uncorrected and excluded
-- **TrOCR:** no training or inference code in this repo yet. OCR for uploads runs behind an `OCRProvider` interface (`ocr_providers.py`) with a Tesseract baseline and a fixture provider; TrOCR will be added as another provider
+- **TrOCR:** training code is in `ocr_training/` (dataset builder, YOLO line detector, Colab notebooks; weights stay on Drive). TrOCR v1 test line CER is 3.78% (greedy) against Tesseract 64.31% on 641 held-out lines. Inference in the app is not wired yet: OCR for uploads runs behind an `OCRProvider` interface (`ocr_providers.py`) with a Tesseract baseline and a fixture provider; TrOCR will be added as another provider
 - **Agent pipeline:** implemented with Method A/B romanisation, agreement gate, fault handler, concurrent summary + KE (`pipeline_runner.py`)
 - **LangChain:** used for the three LLM stages. `llm_text_runtime.py` calls OpenRouter through `langchain-openai` `ChatOpenAI`, and `pipeline_runner.build_llm_chain` expresses Translation, then Summarisation and Knowledge Extraction, as one runnable chain with `RunnableParallel`. Romanisation and the agreement gate are plain Python. LangGraph is not used
 - **Frontend:** a single static `frontend/index.html`, not a React app yet
