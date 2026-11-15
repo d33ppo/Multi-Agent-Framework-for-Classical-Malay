@@ -15,6 +15,8 @@ These scripts were run in Google Colab from `MyDrive/jawi_dataset/`, so they use
 | `box_review.py`, `convert_export.py` | Review boxes, convert Label Studio exports |
 | `yolo_prefill.py` | YOLOv8 line detector: export to YOLO format, train, predict, XY-cut reading order, pre-fill tasks |
 | `trocr_dataset.py` | Build the TrOCR line dataset from the Label Studio export (label normalisation, article-level split, crop jitter) |
+| `train_yolo.py` | Local CUDA training of the line detector v2 (wraps `yolo_prefill`) |
+| `train_trocr.py` | Local CUDA fine-tuning and greedy test evaluation of TrOCR v2 (wraps `trocr_dataset`) |
 | `notebooks/yolo_prefill_colab.ipynb` | Detector training and 1951_01 pre-fill, as run |
 | `notebooks/trocr_v1_colab.ipynb` | TrOCR v1 training and evaluation, as run (with outputs) |
 | `splits/test_articles.json` | Locked test articles, never used to train the detector or TrOCR |
@@ -42,6 +44,26 @@ The last cell ("7. Tesseract baseline") is the earlier version that ran out of m
 
 Training data: 3,173 train / 366 val / 641 test lines from 77 annotated pages.
 Validation articles: 1950_11_015, 1950_12_005, 1950_12_008 (seed 42, 12%).
+
+## Local training (v2, CUDA GPU)
+
+Both scripts leave out the locked test articles from training and map Label Studio task 1 to 1950_11_002 page 0.
+They need `pip install accelerate` on top of `requirements.txt`.
+
+```bash
+python ocr_training/train_yolo.py --export exports/<label_studio_export>.json
+python ocr_training/train_trocr.py --export exports/<label_studio_export>.json
+```
+
+| Script | Defaults | Outputs |
+|---|---|---|
+| `train_yolo.py` | `yolov8s.pt`, imgsz 1280, 100 epochs, patience 20, batch 8 | `models/yolo/qalam_lines_v2.pt`, `results/yolo_v2/metrics.json` (validation articles) |
+| `train_trocr.py` | v1 settings, with batch 4 x gradient accumulation 2 (effective batch 8, fits 8 GB) | `models/trocr_v2/`, `results/trocr_v2/` (`dataset_stats.json`, `log_history.json`, `test_results_greedy.json`) |
+
+`train_trocr.py` crops from the 400 DPI pages in `jawi_dataset/dataset/<article>/pages/` (`--pages-base`) and stops
+if any annotated page is missing, so no crop comes from a low-resolution preview. Re-running it resumes from the
+last checkpoint in `models/trocr_v2/checkpoints/`. The test set is always decoded greedily (`num_beams=1`),
+on GPU and CPU alike, unlike section 6 of the v1 notebook.
 
 ## Not in the repo (on Drive only)
 
