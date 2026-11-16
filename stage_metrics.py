@@ -284,6 +284,34 @@ def page_cer(pred_text: str, gold_text: str) -> dict:
     return {"edits": edits, "gold_chars": len(gold_text), "cer": _ratio(edits, len(gold_text))}
 
 
+def kendall_tau(ranks: list) -> dict:
+    """
+    Kendall tau of a sequence of distinct ranks against ascending order:
+    (concordant - discordant) / pairs. 1 is the same order, -1 the reverse.
+    None with fewer than two items.
+    """
+    concordant = sum(1 for i in range(len(ranks)) for j in range(i + 1, len(ranks)) if ranks[i] < ranks[j])
+    pairs = len(ranks) * (len(ranks) - 1) // 2
+    discordant = pairs - concordant
+    return {"concordant": concordant, "discordant": discordant,
+            "kendall_tau": _ratio(concordant - discordant, pairs)}
+
+
+def reading_order_agreement(pred_lines: list[tuple], gold_lines: list[tuple], gold_order: list[int] | None = None,
+                            threshold: float = 0.5) -> dict:
+    """
+    How well the predicted reading order follows the gold one, on matched lines only.
+    Lines are (box, text); pred_lines are in predicted reading order. gold_order lists
+    gold indices in true reading order (default: the order of gold_lines). Missed and
+    extra lines do not count here, they are already in the matched-line CER.
+    """
+    order = list(range(len(gold_lines))) if gold_order is None else gold_order
+    rank = {gold_index: position for position, gold_index in enumerate(order)}
+    pairs = match_lines([box for box, _ in pred_lines], [box for box, _ in gold_lines], threshold)
+    result = kendall_tau([rank[j] for _, j in sorted(pairs)])
+    return {"matched_lines": len(pairs), **result}
+
+
 def _check_aligned(a: list, b: list) -> None:
     if len(a) != len(b):
         raise ValueError(f"Hypotheses ({len(a)}) and references ({len(b)}) differ in length.")

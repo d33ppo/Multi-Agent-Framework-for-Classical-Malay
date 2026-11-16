@@ -293,7 +293,8 @@ def _column_cut(boxes, min_gap_x):
     """
     Find a vertical cut between columns. Tolerates a couple of small boxes crossing
     the gutter (page numbers, stray marks), which would block a strict XY-cut.
-    Returns (left, right) or None. Each side must keep at least 2 boxes.
+    Returns (left, right, gutter width, (gutter x1, gutter x2)) or None. Each side must
+    keep at least 2 boxes.
     """
     n = len(boxes)
     if n < 4:
@@ -321,22 +322,43 @@ def _column_cut(boxes, min_gap_x):
                 if len(left) >= 2 and len(right) >= 2:
                     key = (run_min, -run_len)
                     if best is None or key < best[0]:
-                        best = (key, left, right)
+                        best = (key, left, right, (x0 + i, x0 + j))
             i = j
         else:
             i += 1
-    return None if best is None else (best[1], best[2], best[0][1] * -1)
+    return None if best is None else (best[1], best[2], best[0][1] * -1, best[3])
 
 
-def _band_cut(boxes):
-    """Widest fully empty horizontal gap across the region. Returns (top, bottom, gap) or None."""
+GUTTER_SPAN_FRAC = 0.25  # a heading reaches at least this far into the narrower column on each side
+
+
+def _spans_gutter(box, gutter, x_min, x_max):
+    """True for a box that crosses the column gutter well into both columns (a full-width title or heading)."""
+    lo, hi = gutter
+    reach = GUTTER_SPAN_FRAC * min(lo - x_min, x_max - hi)
+    return box[0] <= lo - reach and box[2] >= hi + reach
+
+
+def _band_cut(boxes, gutter=None):
+    """
+    Widest fully empty horizontal gap across the region. Returns (top, bottom, gap) or None.
+
+    With `gutter` (the x range of the region's column gutter) a gap only counts when a box
+    directly above or below it spans the gutter (a full-width title or heading). Any other
+    gap crosses the region only because one column has a photo or a break at that height;
+    cutting there would split the other column in two.
+    """
     order = sorted(boxes, key=lambda b: b[1])
-    best, reach = None, order[0][3]
+    if gutter is not None:
+        x_min, x_max = min(b[0] for b in boxes), max(b[2] for b in boxes)
+    best, reach, above = None, order[0][3], order[0]
     for k in range(1, len(order)):
         gap = order[k][1] - reach
         if gap > 0 and (best is None or gap > best[0]):
-            best = (gap, k)
-        reach = max(reach, order[k][3])
+            if gutter is None or any(_spans_gutter(b, gutter, x_min, x_max) for b in (above, order[k])):
+                best = (gap, k)
+        if order[k][3] > reach:
+            reach, above = order[k][3], order[k]
     if best is None:
         return None
     gap, k = best
@@ -347,14 +369,15 @@ def _xy_cut(boxes, min_gap_x, min_gap_y, depth=0):
     if len(boxes) <= 1 or depth > 60:
         return _rows_right_to_left(boxes)
     col = _column_cut(boxes, min_gap_x)
-    band = _band_cut(boxes)
+    # With columns in the region, a band cut needs a heading that spans the gutter next to it.
+    band = _band_cut(boxes, gutter=col[3] if col is not None else None)
     # Like classical XY-cut, take the wider gap first; a band gap must be clearly
     # wider than the column gutter, so aligned text rows never split columns.
     if band is not None and (col is None or band[2] > 1.5 * col[2]):
         top, bottom, _ = band
         return [b for g in (top, bottom) for b in _xy_cut(g, min_gap_x, min_gap_y, depth + 1)]
     if col is not None:
-        left, right, _ = col
+        left, right = col[:2]
         return [b for g in (right, left) for b in _xy_cut(g, min_gap_x, min_gap_y, depth + 1)]  # right first
     bands = _split_by_gap(boxes, 1, 3, min_gap_y)         # horizontal cut = bands
     if len(bands) > 1:

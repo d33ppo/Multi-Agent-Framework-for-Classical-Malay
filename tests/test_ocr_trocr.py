@@ -126,10 +126,36 @@ class ReadingOrderTests(TempDirTestCase):
                  ((100, 150, 1000, 180), "line 2"), ((100, 200, 1000, 230), "line 3")]
         self.assertEqual(self.order(named), ["piece 1", "piece 2", "line 2", "line 3"])
 
-    def test_adverts_below_the_text_come_after_it(self):
+    def test_adverts_below_the_text_stay_in_their_columns(self):
+        # No heading spans the gutter at the gap above the adverts, so there is no band cut:
+        # each advert is read at the foot of its own column. The text lines keep their order.
         named = self.columns() + [((100, 700, 500, 760), "advert L"), ((600, 700, 1000, 760), "advert R")]
-        self.assertEqual(self.order(named)[-2:], ["advert R", "advert L"])
-        self.assertEqual(self.order(named)[:8], ["R1", "R2", "R3", "R4", "L1", "L2", "L3", "L4"])
+        self.assertEqual(self.order(named),
+                         ["R1", "R2", "R3", "R4", "advert R", "L1", "L2", "L3", "L4", "advert L"])
+
+    def test_photo_opposite_a_section_break_does_not_split_the_column(self):
+        # Right column: text, a section break, more text. Left column: text, a photo (no boxes)
+        # at the height of the break, more text. The empty band crosses the page, but no
+        # heading spans the gutter there, so each column is read whole.
+        right = [((560, y, 1000, y + 30), f"R{i}") for i, y in enumerate([100, 150, 200, 250, 400, 450, 500], 1)]
+        left = [((100, y, 540, y + 30), f"L{i}") for i, y in enumerate([100, 150, 400, 450], 1)]
+        self.assertEqual(self.order(left + right),
+                         ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "L1", "L2", "L3", "L4"])
+
+    def test_heading_across_the_gutter_cuts_the_page_into_bands(self):
+        # The same gap, but a full-width heading sits in it: the columns above the heading
+        # are read first, then the heading, then the columns below.
+        right = [((560, y, 1000, y + 30), f"R{i}") for i, y in enumerate([100, 150, 200, 250, 430, 480, 530], 1)]
+        left = [((100, y, 540, y + 30), f"L{i}") for i, y in enumerate([100, 150, 200, 250, 430, 480], 1)]
+        named = left + right + [((100, 330, 1000, 380), "H")]
+        self.assertEqual(self.order(named), ["R1", "R2", "R3", "R4", "L1", "L2", "L3", "L4", "H",
+                                             "R5", "R6", "R7", "L5", "L6"])
+
+    def test_a_small_box_in_the_gutter_is_not_a_heading(self):
+        # A page number in the gutter crosses it but does not reach into the columns.
+        self.assertTrue(yp._spans_gutter((100, 0, 1000, 30), (541, 560), 100, 1000))
+        self.assertFalse(yp._spans_gutter((520, 0, 580, 30), (541, 560), 100, 1000))
+        self.assertFalse(yp._spans_gutter((560, 0, 1000, 30), (541, 560), 100, 1000))
 
 
 class CropTests(TempDirTestCase):
@@ -458,6 +484,25 @@ class PageMetricTests(TempDirTestCase):
         self.assertEqual(stage_metrics.matched_line_cer(pred, gold)["cer"], 0.0)
         self.assertGreater(stage_metrics.page_cer("efgh\nabcd", "abcd\nefgh")["cer"], 0.0)
 
+    def test_kendall_tau_of_the_reading_order(self):
+        self.assertEqual(stage_metrics.kendall_tau([0, 1, 2, 3])["kendall_tau"], 1.0)
+        self.assertEqual(stage_metrics.kendall_tau([3, 2, 1, 0])["kendall_tau"], -1.0)
+        swapped = stage_metrics.kendall_tau([0, 2, 1, 3])
+        self.assertEqual((swapped["concordant"], swapped["discordant"]), (5, 1))
+        self.assertAlmostEqual(swapped["kendall_tau"], 4 / 6, places=6)
+        self.assertIsNone(stage_metrics.kendall_tau([0])["kendall_tau"])
+
+    def test_reading_order_agreement_uses_matched_lines_and_the_gold_order(self):
+        gold = [((0, y, 100, y + 20), text) for y, text in ((0, "a"), (30, "b"), (60, "c"), (90, "d"))]
+        pred = [((0, 60, 100, 80, 0.9), "c"), ((0, 0, 100, 20, 0.9), "a"), ((0, 30, 100, 50, 0.9), "b"),
+                ((0, 500, 100, 520, 0.9), "extra")]  # "d" is missed, the extra line is ignored
+        export_order = stage_metrics.reading_order_agreement(pred, gold)
+        self.assertEqual((export_order["matched_lines"], export_order["concordant"], export_order["discordant"]),
+                         (3, 1, 2))
+        self.assertAlmostEqual(export_order["kendall_tau"], -1 / 3, places=6)
+        # The true order is c, a, b, d: the prediction follows it exactly.
+        self.assertEqual(stage_metrics.reading_order_agreement(pred, gold, [2, 0, 1, 3])["kendall_tau"], 1.0)
+
     def test_one_to_one_matching_agrees_with_the_detector_check(self):
         rng = np.random.default_rng(3)
         gold = [(x, y, x + 300, y + 30) for x in (100, 500) for y in range(50, 700, 45)]
@@ -529,6 +574,66 @@ class EvalScriptTests(TempDirTestCase):
         self.assertAlmostEqual(summary["matched_line_cer"], 1 / 6, places=6)
         self.assertEqual(summary["pages"], 1)
 
+    def test_reviewed_reading_order_replaces_the_export_order(self):
+        script = load_eval_script()
+        # The export lists the left box first; the true order (and the provider's) is right first.
+        gold = [((100.0, 100.0, 540.0, 130.0), "ايبو"), ((560.0, 100.0, 1000.0, 130.0), "فد")]
+        boxes = [(100, 100, 540, 130, 0.9), (560, 100, 1000, 130, 0.9)]
+        answers = [("فد", 0.9), ("ايبو", 0.9)]  # read right to left
+
+        by_export, _ = script.evaluate_page(provider_with(boxes, answers)[0], page_png(), gold)
+        self.assertGreater(by_export["page"]["cer"], 0.0)
+        self.assertEqual((by_export["order"]["kendall_tau"], by_export["order"]["gold_order"]), (-1.0, "export"))
+
+        reviewed, _ = script.evaluate_page(provider_with(boxes, answers)[0], page_png(), gold, gold_order=[1, 0])
+        self.assertEqual(reviewed["page"]["cer"], 0.0)
+        self.assertEqual((reviewed["order"]["kendall_tau"], reviewed["order"]["gold_order"]), (1.0, "reviewed"))
+        self.assertEqual(reviewed["line"], by_export["line"])  # the matched-line CER does not depend on order
+
+        summary = script.overall([{"article_id": "a", "page_index": 0, **by_export},
+                                  {"article_id": "a", "page_index": 1, **reviewed}])
+        self.assertEqual((summary["order_kendall_tau"], summary["order_kendall_tau_page_mean"]), (0.0, 0.0))
+        self.assertEqual(summary["pages_with_reviewed_order"], 1)
+
+    def test_reading_order_file_is_optional_and_validated(self):
+        script = load_eval_script()
+        self.assertEqual(script.load_reading_order(self.tmp / "missing.json"), {})
+        path = self.tmp / "order.json"
+        path.write_text(json.dumps({"1950_11_009_p00": [1, 0]}), encoding="utf-8")
+        orders = script.load_reading_order(path)
+        self.assertEqual(script.page_key("1950_11_009", 0), "1950_11_009_p00")
+        self.assertEqual(script.gold_order_for(orders, "1950_11_009_p00", 2), [1, 0])
+        self.assertIsNone(script.gold_order_for(orders, "1950_11_009_p01", 2))  # not reviewed: export order
+        for bad_count in (1, 3):  # an index out of range, or a gold line left out
+            with self.assertRaises(ValueError):
+                script.gold_order_for(orders, "1950_11_009_p00", bad_count)
+        with self.assertRaises(ValueError):
+            script.gold_order_for({"k": [0, 0]}, "k", 2)
+
+    def test_order_sheets_number_the_gold_boxes_and_write_a_template(self):
+        export = self.write_export()
+        folder = self.tmp / "pages" / "1950_11_009" / "pages"
+        folder.mkdir(parents=True)
+        (folder / "page_00.png").write_bytes(page_png(width=1000, height=2000))
+        spec = importlib.util.spec_from_file_location(
+            "make_order_sheets", ocr_trocr.PROJECT_DIR / "scripts" / "make_order_sheets.py")
+        sheets = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sheets)
+
+        out = self.tmp / "review"
+        template = sheets.make_sheets(export, self.tmp / "pages", ["1950_11_009"], out, max_side=500,
+                                      reading_orders={"1950_11_009_p00": [0]})
+        self.assertEqual(template, {"1950_11_009_p00": [0]})  # the 1 px box is dropped, as in the eval
+        self.assertEqual(json.loads((out / "test_reading_order.template.json").read_text(encoding="utf-8")), template)
+        sheet = cv2.imread(str(out / "1950_11_009_p00.jpg"))
+        self.assertEqual(sheet.shape[:2], (500, 250))  # downscaled, aspect kept
+        self.assertLess(sheet.min(), 200)  # something was drawn on the white page
+
+        blank = np.full((200, 400, 3), 255, dtype=np.uint8)
+        drawn = sheets.draw_sheet(blank, [((10, 10, 300, 40), "a"), ((10, 60, 300, 90), "b")], path_order=[1, 0])
+        self.assertEqual(drawn.shape, blank.shape)  # small pages are not upscaled
+        self.assertTrue((blank == 255).all())  # the input image is left untouched
+
     def test_gold_boxes_skip_the_detector_and_keep_annotation_order(self):
         script = load_eval_script()
         gold = [((100.0, 100.0, 540.0, 130.0), "ايبو"), ((560.0, 100.0, 1000.0, 130.0), "فد")]  # left box first
@@ -591,7 +696,8 @@ class EvalScriptTests(TempDirTestCase):
         self.patch("ocr_trocr.TrOCROCRProvider", lambda *args, **kwargs: provider)
         out = self.tmp / "out"
         argv = ["eval_page_cer.py", "--export", str(export), "--pages-base", str(self.tmp / "pages"),
-                "--test-articles", str(articles), "--out-dir", str(out), "--gold-boxes"]
+                "--test-articles", str(articles), "--out-dir", str(out), "--gold-boxes",
+                "--reading-order", str(self.tmp / "no_reading_order.json")]
         with mock.patch.object(sys, "argv", argv), mock.patch("builtins.print"):
             script.main()
 
@@ -603,6 +709,9 @@ class EvalScriptTests(TempDirTestCase):
         self.assertEqual(report["overall"]["errors"]["recognition"]["lines"], 2)
         self.assertEqual((report["split"], report["config"]["box_pad_x"], report["config"]["box_pad_y"]),
                          ("test", 0.0, 0.0))
+        self.assertIsNone(report["config"]["reading_order_file"])
+        self.assertEqual(report["overall"]["pages_with_reviewed_order"], 0)
+        self.assertEqual([p["order"]["gold_order"] for p in report["per_page"]], ["export", "export"])
         self.assertTrue((out / "page_eval_greedy_gold_boxes.csv").is_file())
         self.assertFalse((out / "page_eval_greedy.json").exists())  # the detector run is not overwritten
 
