@@ -26,6 +26,16 @@ Metrics, per page and overall:
       5+ repeated-character run, extra lines that touch a gold box or not, and
       missed lines partly covered by a prediction or not detected at all
 
+--split val evaluates the validation articles instead of the test articles, for
+tuning settings without touching the test set. They are chosen with the training
+rule (trocr_dataset.split_articles: every article in the export minus the test
+articles, seed 42, 12%), so they are the articles TrOCR and YOLO were validated
+on. Gold comes from the same export. Files get a _val suffix.
+
+--pad-x / --pad-y set the detector box padding (OCR_BOX_PAD_X / OCR_BOX_PAD_Y,
+default 0); the values are recorded in the JSON. Use a separate --out-dir per
+setting, the file names do not include the padding.
+
 --gold-boxes skips the detector and runs the Label Studio boxes, in annotation
 order, through the same crop and TrOCR path. Detection and reading order then
 drop out, so the matched-line CER is the recognition error on hand-drawn boxes
@@ -36,8 +46,8 @@ The page PNGs are the 400 DPI renders the models were trained on, the same DPI
 an upload is rendered at for the trocr provider. The DPI is recorded in the
 JSON: --page-dpi as stated, plus the DPI stored in each PNG when it has one.
 
-Outputs in --out-dir: page_eval_<decoding>[_gold_boxes].json and .csv (metrics
-only, no Qalam text) and predictions_<decoding>[_gold_boxes].jsonl (texts, gitignored).
+Outputs in --out-dir: page_eval_<decoding>[_gold_boxes][_val].json and .csv (metrics
+only, no Qalam text) and predictions_<decoding>[_gold_boxes][_val].jsonl (texts, gitignored).
 
 Usage:
     python scripts/eval_page_cer.py --export exports/label_studio_export.json --pages-base data/dataset
@@ -73,8 +83,23 @@ IOU_THRESHOLD = 0.5
 MIN_BOX_PX = 3  # the dataset builder skips boxes smaller than this
 
 
+def split_article_ids(export_path, test_articles, split: str) -> list[str]:
+    """
+    Articles of one split. "test" is the locked list. "val" uses the training rule
+    (trocr_dataset.split_articles over every article in the export), so it gives the
+    validation articles TrOCR and the detector were trained against.
+    """
+    if split == "test":
+        return list(test_articles)
+    if split != "val":
+        raise ValueError(f"split must be 'test' or 'val', got '{split}'.")
+    pages, _report = yp.load_pages(export_path, TASK_OVERRIDES)
+    split_of = td.split_articles({p["article_id"] for p in pages}, test_articles)
+    return sorted(a for a, s in split_of.items() if s == "val")
+
+
 def load_test_pages(export_path, test_articles, exclude_pages=td.DEFAULT_EXCLUDE_PAGES) -> list[dict]:
-    """Ground-truth pages of the test articles, as returned by yolo_prefill.load_pages."""
+    """Ground-truth pages of the given articles (the test articles by default), as returned by yolo_prefill.load_pages."""
     pages, _report = yp.load_pages(export_path, TASK_OVERRIDES)
     wanted = set(test_articles)
     pages = [p for p in pages if p["article_id"] in wanted and (p["article_id"], p["page_index"]) not in set(exclude_pages)]
@@ -171,6 +196,10 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="evaluate only the first N pages, for a quick check")
     parser.add_argument("--page-dpi", type=int, default=TROCR_RENDER_DPI,
                         help=f"DPI the page PNGs were rendered at (default {TROCR_RENDER_DPI}), recorded in the JSON")
+    parser.add_argument("--split", choices=("test", "val"), default="test",
+                        help="test articles (default) or the validation articles of the training split")
+    parser.add_argument("--pad-x", type=float, help="detector box padding left/right, x box height (default: OCR_BOX_PAD_X or 0)")
+    parser.add_argument("--pad-y", type=float, help="detector box padding top/bottom, x box height (default: OCR_BOX_PAD_Y or 0)")
     parser.add_argument("--gold-boxes", action="store_true",
                         help="skip the detector: recognise the Label Studio boxes in annotation order")
     args = parser.parse_args()
@@ -178,16 +207,21 @@ def main() -> None:
     from ocr_trocr import TrOCROCRProvider, decode_page
 
     test_articles = json.loads(Path(args.test_articles).read_text(encoding="utf-8"))
-    pages = load_test_pages(args.export, test_articles)[: args.limit]
+    articles = split_article_ids(args.export, test_articles, args.split)
+    pages = load_test_pages(args.export, articles)[: args.limit]
     provider = TrOCROCRProvider(args.model, args.detector, imgsz=args.imgsz, num_beams=args.beams,
-                                batch_size=args.batch_size, device=args.device, threads=args.threads)
+                                batch_size=args.batch_size, device=args.device, threads=args.threads,
+                                pad_x=args.pad_x, pad_y=args.pad_y)
     started = time.perf_counter()
     provider.load(detector=not args.gold_boxes)
     load_seconds = round(time.perf_counter() - started, 2)
     decoding = "greedy" if provider.num_beams == 1 else f"beam{provider.num_beams}"
     boxes = "gold" if args.gold_boxes else "detected"
     tag = f"{decoding}_gold_boxes" if args.gold_boxes else decoding
-    print(f"Models loaded in {load_seconds}s. {len(pages)} test pages, decoding {decoding}, {boxes} boxes.")
+    if args.split == "val":
+        tag += "_val"
+    print(f"Models loaded in {load_seconds}s. {len(pages)} {args.split} pages, decoding {decoding}, {boxes} boxes, "
+          f"pad x {provider.pad_x} y {provider.pad_y}.")
 
     rows, predictions = [], []
     for p in pages:
@@ -215,7 +249,7 @@ def main() -> None:
     stored_dpis = sorted({r["png_dpi"] for r in rows if r["png_dpi"]})
     if any(dpi != args.page_dpi for dpi in stored_dpis):
         print(f"Warning: the PNGs store DPI {stored_dpis}, but --page-dpi is {args.page_dpi}.")
-    if summary["gold_lines"] != 641:
+    if args.split == "test" and summary["gold_lines"] != 641:
         print(f"Note: {summary['gold_lines']} gold lines; the line-level test set has 641.")
     import torch
     import transformers
@@ -224,11 +258,13 @@ def main() -> None:
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "git_commit": _git_commit(),
         "boxes": boxes,
+        "split": args.split,
         "config": {
             "model": provider.model_path.name, "detector": None if args.gold_boxes else provider.detector_path.name,
             "detector_imgsz": provider.imgsz, "detector_conf": 0.35, "iou_threshold": IOU_THRESHOLD,
             "decoding": decoding, "num_beams": provider.num_beams, "batch_size": provider.batch_size,
             "device": args.device, "torch_threads": torch.get_num_threads(), "test_articles": test_articles,
+            "articles": articles, "box_pad_x": provider.pad_x, "box_pad_y": provider.pad_y,
             "page_dpi": args.page_dpi, "png_stored_dpi": stored_dpis,
             "upload_render_dpi_for_trocr": TROCR_RENDER_DPI,
             "torch": torch.__version__, "transformers": transformers.__version__, "cpu": platform.processor(),

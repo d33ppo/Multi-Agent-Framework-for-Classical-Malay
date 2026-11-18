@@ -95,6 +95,8 @@ These variables are read by the document upload route and the background job run
 | `OCR_TORCH_THREADS` | torch default | CPU threads used by torch for TrOCR. |
 | `OCR_DEVICE` | `auto` | `auto` (CUDA when available, otherwise CPU), `cpu` or `cuda`. |
 | `OCR_CONFIDENCE_THRESHOLD` | `0.60` | Lines with a TrOCR confidence below this are flagged `low_confidence`. Not calibrated yet (task 3.6): the flag is a hint for the reviewer and does not change the run status. |
+| `OCR_BOX_PAD_X` | `0` | Padding added to the left and right of each detected line box before cropping, as a fraction of the box height. The usual 0.12 x height crop margin is added after it. Given boxes (`--gold-boxes`) are not padded. |
+| `OCR_BOX_PAD_Y` | `0` | The same, at the top and bottom of the box. |
 | `STORAGE_DIR` | `storage` | Folder for uploads, rendered pages, OCR output and run records. It is listed in `.gitignore`. |
 | `JOB_WORKERS` | `1` | Number of uploaded documents processed at the same time. Extra uploads wait. |
 
@@ -220,6 +222,8 @@ python scripts/eval_page_cer.py --export exports/<label_studio_export>.json --pa
 ```
 
 The page PNGs should be the 400 DPI renders used for training, which is also the DPI an upload is rendered at for `trocr`. `--page-dpi` (default 400) is recorded in the JSON together with the DPI stored in the PNG files, and the script warns when they differ. It runs on CPU by default so the seconds per page are comparable. `--limit 2` evaluates two pages for a quick check. Results go to `ocr_training/results/page_eval_v1/`: `page_eval_greedy.json` (metrics only, can be committed), `page_eval_greedy.csv` and `predictions_greedy.jsonl` (texts, ignored by git).
+
+`--split val` evaluates the validation articles instead (chosen by the training rule, `trocr_dataset.split_articles`, from the same export), so settings can be tuned without looking at the test set; its files get a `_val` suffix. `--pad-x` and `--pad-y` override `OCR_BOX_PAD_X` and `OCR_BOX_PAD_Y` for the run and are recorded in the JSON. The file names do not include the padding, so give each setting its own `--out-dir`.
 
 `--gold-boxes` skips the detector and sends the hand-drawn Label Studio boxes, in annotation order, through the same crop and TrOCR path. It loads only TrOCR. Comparing it with the default run separates recognition error from detection and reading-order error. The JSON then has `"boxes": "gold"` (the default run has `"boxes": "detected"`) and the files are named `page_eval_greedy_gold_boxes.*`, so the detector run is not overwritten.
 

@@ -221,6 +221,7 @@ flowchart LR
 | --- | --- |
 | Loading | Both models load once, on the first page, behind a lock. Pages are processed one at a time, which keeps memory bounded. The device is `OCR_DEVICE` (`auto` uses CUDA when available, otherwise CPU) and `OCR_TORCH_THREADS` sets the CPU threads. `use_cache` is switched on for decoding; without it CPU decoding is very slow. |
 | Colour order | The detector gets the page as BGR (as `cv2.imread` gave it in training). The recogniser gets RGB crops (as PIL gave them in training). |
+| Box padding | `OCR_BOX_PAD_X` and `OCR_BOX_PAD_Y` (default 0, off) widen each detected box by that fraction of its height, left/right and top/bottom, clipped to the page, before the training crop margin is added. Only the crop changes: each line still reports the detected box. |
 | Decoding | `OCR_NUM_BEAMS`, default 1 (greedy). Greedy is the decoding behind the reported 3.78% test CER. |
 | Confidence | exp(mean token log-prob) per line: from `compute_transition_scores` up to the first end token for greedy, from `sequences_scores` for beam search. Generation scores are dropped after each batch. |
 | Low confidence | `low_confidence` is true when the confidence is below `OCR_CONFIDENCE_THRESHOLD` (default 0.60). The threshold is not calibrated yet (task 3.6), so the flag is recorded for the reviewer and does not change the run status. |

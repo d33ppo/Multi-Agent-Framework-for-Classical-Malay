@@ -47,6 +47,8 @@ CONTROLLED_ENV = (
     "OCR_TORCH_THREADS",
     "OCR_DEVICE",
     "OCR_CONFIDENCE_THRESHOLD",
+    "OCR_BOX_PAD_X",
+    "OCR_BOX_PAD_Y",
     "STORAGE_DIR",
     "JOB_WORKERS",
     "LANGSMITH_TRACING",  # LangChain tracing would upload chain inputs, so it is always off in tests
