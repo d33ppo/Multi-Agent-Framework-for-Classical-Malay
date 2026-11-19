@@ -18,13 +18,23 @@ Metrics, per page and overall:
       matched pairs scored by edit distance, missed gold lines as full deletions,
       extra predicted lines as full insertions
   (b) page CER (secondary): page text joined with newlines; predicted lines in
-      reading order, gold lines in the order of the export, so it is order sensitive
+      reading order, gold lines in gold reading order, so it is order sensitive
   (c) detector precision and recall at IoU >= 0.5
   (d) seconds per page (model loading reported separately)
   (e) an error breakdown: recognition CER on matched lines only, edits from
       matched lines more than 15% longer or shorter than gold, lines with a new
       5+ repeated-character run, extra lines that touch a gold box or not, and
       missed lines partly covered by a prediction or not detected at all
+  (f) reading order: Kendall tau between the predicted and the gold order of the
+      matched lines (1 = same order)
+
+Gold reading order: the Label Studio region order is not always the reading order
+(boxes added late during annotation are appended at the end). When
+ocr_training/splits/test_reading_order.json exists (--reading-order), it gives the
+true order per page as {"<article>_p<NN>": [gold line indices in reading order]}.
+The indices are the 0-based numbers scripts/make_order_sheets.py draws on the page.
+Pages not listed keep the export order; each page records which one it used
+("gold_order": "reviewed" or "export").
 
 --split val evaluates the validation articles instead of the test articles, for
 tuning settings without touching the test set. They are chosen with the training
@@ -79,6 +89,7 @@ from pdf_render import TROCR_RENDER_DPI  # noqa: E402
 TASK_OVERRIDES = {1: ("1950_11_002", 0)}  # task 1 has no metadata in the export
 DEFAULT_TEST_ARTICLES = PROJECT_DIR / "ocr_training" / "splits" / "test_articles.json"
 DEFAULT_OUT_DIR = PROJECT_DIR / "ocr_training" / "results" / "page_eval_v1"
+DEFAULT_READING_ORDER = PROJECT_DIR / "ocr_training" / "splits" / "test_reading_order.json"
 IOU_THRESHOLD = 0.5
 MIN_BOX_PX = 3  # the dataset builder skips boxes smaller than this
 
@@ -122,19 +133,54 @@ def gold_lines(page: dict, width: int, height: int) -> list[tuple]:
     return lines
 
 
-def evaluate_page(provider, png: bytes, gold: list[tuple], gold_boxes: bool = False) -> tuple[dict, list]:
-    """Run the provider on one page (detected boxes, or the gold boxes in export order) and score it."""
+def page_key(article_id: str, page_index: int) -> str:
+    return f"{article_id}_p{page_index:02d}"
+
+
+def load_reading_order(path) -> dict:
+    """The reviewed reading orders, {"<article>_p<NN>": [gold indices]}, or {} when the file does not exist."""
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    orders = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(orders, dict):
+        raise ValueError(f"{path} must be a JSON object of page key to list of gold indices.")
+    return orders
+
+
+def gold_order_for(orders: dict, key: str, gold_count: int) -> list[int] | None:
+    """The reviewed order of one page, checked to list every gold line exactly once. None when not reviewed."""
+    order = orders.get(key)
+    if order is None:
+        return None
+    if sorted(order) != list(range(gold_count)):
+        raise ValueError(f"Reading order for {key} must list each of the {gold_count} gold lines "
+                         f"(0 to {gold_count - 1}) exactly once.")
+    return list(order)
+
+
+def evaluate_page(provider, png: bytes, gold: list[tuple], gold_boxes: bool = False,
+                  gold_order: list[int] | None = None) -> tuple[dict, list]:
+    """
+    Run the provider on one page (detected boxes, or the gold boxes) and score it.
+    gold_order is the reviewed reading order of the gold lines; without it the export order is used.
+    Gold boxes are sent in that same order, so with --gold-boxes the page CER is recognition only.
+    """
+    order = list(range(len(gold))) if gold_order is None else gold_order
     started = time.perf_counter()
-    detected = provider.read_boxes(png, [box for box, _ in gold]) if gold_boxes else provider.read_page(png)
+    detected = provider.read_boxes(png, [gold[j][0] for j in order]) if gold_boxes else provider.read_page(png)
     seconds = time.perf_counter() - started
     pred = [(line.xyxy if line.detector_confidence is None else (*line.xyxy, line.detector_confidence), line.text)
             for line in detected]
     line_metrics = stage_metrics.matched_line_cer(pred, gold, IOU_THRESHOLD)
     errors = stage_metrics.line_error_breakdown(pred, gold, IOU_THRESHOLD)
     pred_text = "\n".join(line.text for line in detected if line.text)  # what the product passes on
-    gold_text = "\n".join(text for _, text in gold)
+    gold_text ="\n".join(gold[j][1] for j in order)
     page = stage_metrics.page_cer(pred_text, gold_text)
-    return {"seconds": round(seconds, 3), "line": line_metrics, "page": page, "errors": errors}, detected
+    reading = stage_metrics.reading_order_agreement(pred, gold, order, IOU_THRESHOLD)
+    reading["gold_order"] = "export" if gold_order is None else "reviewed"
+    return {"seconds": round(seconds, 3), "line": line_metrics, "page": page, "order": reading,
+            "errors": errors}, detected
 
 
 def overall(rows: list[dict]) -> dict:
@@ -144,11 +190,18 @@ def overall(rows: list[dict]) -> dict:
     page_edits = sum(r["page"]["edits"] for r in rows)
     page_chars = sum(r["page"]["gold_chars"] for r in rows)
     seconds = [r["seconds"] for r in rows]
+    concordant = sum(r["order"]["concordant"] for r in rows)
+    discordant = sum(r["order"]["discordant"] for r in rows)
+    taus = [r["order"]["kendall_tau"] for r in rows if r["order"]["kendall_tau"] is not None]
     return {
         "pages": len(rows),
         "matched_line_cer": stage_metrics._ratio(total["edits"], total["gold_chars"]),
         "matched_line_char_accuracy": None if not total["gold_chars"] else round(1 - total["edits"] / total["gold_chars"], 6),
         "page_cer": stage_metrics._ratio(page_edits, page_chars),
+        # Line pairs pooled over pages (pairs within a page only), and the plain mean over pages.
+        "order_kendall_tau": stage_metrics._ratio(concordant - discordant, concordant + discordant),
+        "order_kendall_tau_page_mean": round(statistics.mean(taus), 6) if taus else None,
+        "pages_with_reviewed_order": sum(1 for r in rows if r["order"]["gold_order"] == "reviewed"),
         "detector_precision": stage_metrics._ratio(total["matched_lines"], total["pred_lines"]),
         "detector_recall": stage_metrics._ratio(total["matched_lines"], total["gold_lines"]),
         "seconds_per_page_mean": round(statistics.mean(seconds), 3) if seconds else None,
@@ -200,8 +253,10 @@ def main() -> None:
                         help="test articles (default) or the validation articles of the training split")
     parser.add_argument("--pad-x", type=float, help="detector box padding left/right, x box height (default: OCR_BOX_PAD_X or 0)")
     parser.add_argument("--pad-y", type=float, help="detector box padding top/bottom, x box height (default: OCR_BOX_PAD_Y or 0)")
+    parser.add_argument("--reading-order", default=str(DEFAULT_READING_ORDER),
+                        help="JSON of reviewed gold reading orders per page; used when the file exists")
     parser.add_argument("--gold-boxes", action="store_true",
-                        help="skip the detector: recognise the Label Studio boxes in annotation order")
+                        help="skip the detector: recognise the Label Studio boxes in gold reading order")
     args = parser.parse_args()
 
     from ocr_trocr import TrOCROCRProvider, decode_page
@@ -209,6 +264,7 @@ def main() -> None:
     test_articles = json.loads(Path(args.test_articles).read_text(encoding="utf-8"))
     articles = split_article_ids(args.export, test_articles, args.split)
     pages = load_test_pages(args.export, articles)[: args.limit]
+    reading_orders = load_reading_order(args.reading_order)
     provider = TrOCROCRProvider(args.model, args.detector, imgsz=args.imgsz, num_beams=args.beams,
                                 batch_size=args.batch_size, device=args.device, threads=args.threads,
                                 pad_x=args.pad_x, pad_y=args.pad_y)
@@ -229,7 +285,8 @@ def main() -> None:
         png = png_path.read_bytes()
         height, width = decode_page(png).shape[:2]
         gold = gold_lines(p, width, height)
-        result, detected = evaluate_page(provider, png, gold, gold_boxes=args.gold_boxes)
+        gold_order = gold_order_for(reading_orders, page_key(p["article_id"], p["page_index"]), len(gold))
+        result, detected = evaluate_page(provider, png, gold, gold_boxes=args.gold_boxes, gold_order=gold_order)
         rows.append({"article_id": p["article_id"], "page_index": p["page_index"],
                      "width": width, "height": height, "png_dpi": png_dpi(png), **result})
         predictions.append({
@@ -239,10 +296,12 @@ def main() -> None:
                       "detector_confidence": None if d.detector_confidence is None else round(d.detector_confidence, 4)}
                      for d in detected],
             "gold": [{"xyxy": [round(v, 1) for v in box], "text": text} for box, text in gold],
+            "gold_order": gold_order,  # reviewed reading order as gold indices, or None (export order)
         })
         line = result["line"]
         print(f"{p['article_id']} p{p['page_index']:02d}: matched-line CER {line['cer']}, recognition CER "
               f"{result['errors']['recognition']['cer']}, page CER {result['page']['cer']}, "
+              f"order tau {result['order']['kendall_tau']} ({result['order']['gold_order']}), "
               f"P {line['precision']} R {line['recall']}, {result['seconds']}s")
 
     summary = overall(rows)
@@ -266,6 +325,7 @@ def main() -> None:
             "device": args.device, "torch_threads": torch.get_num_threads(), "test_articles": test_articles,
             "articles": articles, "box_pad_x": provider.pad_x, "box_pad_y": provider.pad_y,
             "page_dpi": args.page_dpi, "png_stored_dpi": stored_dpis,
+            "reading_order_file": Path(args.reading_order).name if reading_orders else None,
             "upload_render_dpi_for_trocr": TROCR_RENDER_DPI,
             "torch": torch.__version__, "transformers": transformers.__version__, "cpu": platform.processor(),
         },
@@ -280,12 +340,13 @@ def main() -> None:
         writer = csv.writer(handle)
         writer.writerow(["article_id", "page_index", "boxes", "gold_lines", "pred_lines", "matched_lines",
                          "precision", "recall", "matched_line_cer", "recognition_cer", "page_cer", "gold_chars",
-                         "seconds"])
+                         "seconds", "order_kendall_tau", "gold_order"])
         for r in rows:
             line = r["line"]
             writer.writerow([r["article_id"], r["page_index"], boxes, line["gold_lines"], line["pred_lines"],
                              line["matched_lines"], line["precision"], line["recall"], line["cer"],
-                             r["errors"]["recognition"]["cer"], r["page"]["cer"], line["gold_chars"], r["seconds"]])
+                             r["errors"]["recognition"]["cer"], r["page"]["cer"], line["gold_chars"], r["seconds"],
+                             r["order"]["kendall_tau"], r["order"]["gold_order"]])
     with open(out / f"predictions_{tag}.jsonl", "w", encoding="utf-8") as handle:
         for item in predictions:
             handle.write(json.dumps(item, ensure_ascii=False) + "\n")

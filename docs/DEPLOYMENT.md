@@ -225,7 +225,15 @@ The page PNGs should be the 400 DPI renders used for training, which is also the
 
 `--split val` evaluates the validation articles instead (chosen by the training rule, `trocr_dataset.split_articles`, from the same export), so settings can be tuned without looking at the test set; its files get a `_val` suffix. `--pad-x` and `--pad-y` override `OCR_BOX_PAD_X` and `OCR_BOX_PAD_Y` for the run and are recorded in the JSON. The file names do not include the padding, so give each setting its own `--out-dir`.
 
-`--gold-boxes` skips the detector and sends the hand-drawn Label Studio boxes, in annotation order, through the same crop and TrOCR path. It loads only TrOCR. Comparing it with the default run separates recognition error from detection and reading-order error. The JSON then has `"boxes": "gold"` (the default run has `"boxes": "detected"`) and the files are named `page_eval_greedy_gold_boxes.*`, so the detector run is not overwritten.
+`--gold-boxes` skips the detector and sends the hand-drawn Label Studio boxes, in gold reading order (the reviewed order when there is one, otherwise annotation order), through the same crop and TrOCR path. It loads only TrOCR. Comparing it with the default run separates recognition error from detection and reading-order error. The JSON then has `"boxes": "gold"` (the default run has `"boxes": "detected"`) and the files are named `page_eval_greedy_gold_boxes.*`, so the detector run is not overwritten.
+
+**Gold reading order.** Page CER and the reading-order metric (`order.kendall_tau` per page, `order_kendall_tau` overall: Kendall tau between the predicted and the gold order of the matched lines) compare against the gold reading order. By default that is the region order of the Label Studio export, which is wrong on some pages because boxes added late are appended at the end. To correct it:
+
+```bash
+python scripts/make_order_sheets.py --export exports/<label_studio_export>.json --pages-base <dataset folder>
+```
+
+This writes one downscaled page per test page to `ocr_training/review/` (ignored by git) with the gold boxes numbered from 0 in their current order, and `test_reading_order.template.json`. Copy the template to `ocr_training/splits/test_reading_order.json`, reorder the indices of the pages that are wrong and delete the pages that are already right. The evaluation picks the file up automatically (`--reading-order` to point elsewhere), records `"gold_order": "reviewed"` or `"export"` per page, and refuses an order that does not list every gold line once. Re-running `make_order_sheets.py` then also draws the reviewed order as a path through the boxes. The indices depend on the export, so redo the file if the test pages are re-annotated.
 
 Each page and the overall summary have an `errors` breakdown. The categories can overlap, so they are not meant to add up:
 

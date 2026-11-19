@@ -32,3 +32,6 @@ exports/
 ocr_training/results/**/*.csv
 ocr_training/results/**/*.jsonl
 jawi_dataset/
+
+# Reading-order review sheets (page images with numbered boxes)
+ocr_training/review/
