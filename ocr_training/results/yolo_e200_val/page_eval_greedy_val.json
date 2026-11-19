@@ -1,0 +1,784 @@
+{
+ "created_at": "2026-11-19T07:03:20+00:00",
+ "git_commit": "8b138f2",
+ "boxes": "detected",
+ "split": "val",
+ "config": {
+  "model": "trocr_v2",
+  "detector": "qalam_lines_v2_e200.pt",
+  "detector_imgsz": 1280,
+  "detector_conf": 0.35,
+  "iou_threshold": 0.5,
+  "decoding": "greedy",
+  "num_beams": 1,
+  "batch_size": 16,
+  "device": "cuda",
+  "torch_threads": 10,
+  "test_articles": [
+   "1950_11_009",
+   "1950_11_013",
+   "1950_12_003",
+   "1950_12_007",
+   "1950_12_010",
+   "1950_12_014"
+  ],
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ],
+  "box_pad_x": 0.0,
+  "box_pad_y": 0.0,
+  "page_dpi": 400,
+  "png_stored_dpi": [],
+  "upload_render_dpi_for_trocr": 400,
+  "torch": "2.14.1+cu130",
+  "transformers": "4.52.4",
+  "cpu": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel"
+ },
+ "model_load_seconds": 44.11,
+ "overall": {
+  "pages": 10,
+  "matched_line_cer": 0.081727,
+  "matched_line_char_accuracy": 0.918273,
+  "page_cer": 0.147955,
+  "detector_precision": 0.970962,
+  "detector_recall": 0.948582,
+  "seconds_per_page_mean": 10.386,
+  "seconds_per_page_median": 11.771,
+  "edits": 1645,
+  "matched_edits": 718,
+  "missed_chars": 632,
+  "extra_chars": 295,
+  "gold_chars": 20128,
+  "gold_lines": 564,
+  "pred_lines": 551,
+  "matched_lines": 535,
+  "errors": {
+   "recognition": {
+    "lines": 535,
+    "edits": 718,
+    "gold_chars": 19496,
+    "cer": 0.036828
+   },
+   "length_mismatch": {
+    "longer": {
+     "lines": 6,
+     "edits": 86
+    },
+    "shorter": {
+     "lines": 10,
+     "edits": 176
+    }
+   },
+   "repeated_run": {
+    "lines": 0,
+    "edits": 0
+   },
+   "extra": {
+    "overlaps_gold": {
+     "lines": 14,
+     "edits": 245
+    },
+    "no_gold_overlap": {
+     "lines": 2,
+     "edits": 50
+    }
+   },
+   "missed": {
+    "partly_covered": {
+     "lines": 28,
+     "edits": 614
+    },
+    "not_detected": {
+     "lines": 1,
+     "edits": 18
+    }
+   }
+  }
+ },
+ "per_page": [
+  {
+   "article_id": "1950_11_005",
+   "page_index": 0,
+   "width": 3284,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 13.658,
+   "line": {
+    "edits": 56,
+    "matched_edits": 2,
+    "missed_chars": 16,
+    "extra_chars": 38,
+    "gold_chars": 2431,
+    "cer": 0.023036,
+    "gold_lines": 66,
+    "pred_lines": 67,
+    "matched_lines": 65,
+    "precision": 0.970149,
+    "recall": 0.984848
+   },
+   "page": {
+    "edits": 63,
+    "gold_chars": 2496,
+    "cer": 0.02524
+   },
+   "errors": {
+    "recognition": {
+     "lines": 65,
+     "edits": 2,
+     "gold_chars": 2415,
+     "cer": 0.000828
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 1,
+      "edits": 18
+     },
+     "no_gold_overlap": {
+      "lines": 1,
+      "edits": 20
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 1,
+      "edits": 16
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_11_005",
+   "page_index": 1,
+   "width": 3267,
+   "height": 4678,
+   "png_dpi": null,
+   "seconds": 7.959,
+   "line": {
+    "edits": 89,
+    "matched_edits": 73,
+    "missed_chars": 0,
+    "extra_chars": 16,
+    "gold_chars": 1589,
+    "cer": 0.05601,
+    "gold_lines": 42,
+    "pred_lines": 44,
+    "matched_lines": 42,
+    "precision": 0.954545,
+    "recall": 1.0
+   },
+   "page": {
+    "edits": 146,
+    "gold_chars": 1630,
+    "cer": 0.089571
+   },
+   "errors": {
+    "recognition": {
+     "lines": 42,
+     "edits": 73,
+     "gold_chars": 1589,
+     "cer": 0.045941
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 1,
+      "edits": 15
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 2,
+      "edits": 16
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 0,
+      "edits": 0
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_11_014",
+   "page_index": 0,
+   "width": 3267,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 4.136,
+   "line": {
+    "edits": 447,
+    "matched_edits": 151,
+    "missed_chars": 178,
+    "extra_chars": 118,
+    "gold_chars": 697,
+    "cer": 0.64132,
+    "gold_lines": 11,
+    "pred_lines": 9,
+    "matched_lines": 7,
+    "precision": 0.777778,
+    "recall": 0.636364
+   },
+   "page": {
+    "edits": 294,
+    "gold_chars": 707,
+    "cer": 0.415842
+   },
+   "errors": {
+    "recognition": {
+     "lines": 7,
+     "edits": 151,
+     "gold_chars": 519,
+     "cer": 0.290944
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 3,
+      "edits": 77
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 2,
+      "edits": 118
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 4,
+      "edits": 178
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1950_11_015",
+   "page_index": 0,
+   "width": 3273,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 4.763,
+   "line": {
+    "edits": 271,
+    "matched_edits": 114,
+    "missed_chars": 157,
+    "extra_chars": 0,
+    "gold_chars": 748,
+    "cer": 0.362299,
+    "gold_lines": 11,
+    "pred_lines": 8,
+    "matched_lines": 8,
+    "precision": 1.0,
+    "recall": 0.727273
+   },
+   "page": {
+    "edits": 255,
+    "gold_chars": 758,
+    "cer": 0.336412
+   },
+   "errors": {
+    "recognition": {
+     "lines": 8,
+     "edits": 114,
+     "gold_chars": 591,
+     "cer": 0.192893
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 1,
+      "edits": 35
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 3,
+      "edits": 157
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1951_01_011",
+   "page_index": 0,
+   "width": 3284,
+   "height": 4678,
+   "png_dpi": null,
+   "seconds": 11.821,
+   "line": {
+    "edits": 164,
+    "matched_edits": 78,
+    "missed_chars": 86,
+    "extra_chars": 0,
+    "gold_chars": 2315,
+    "cer": 0.070842,
+    "gold_lines": 60,
+    "pred_lines": 57,
+    "matched_lines": 57,
+    "precision": 1.0,
+    "recall": 0.95
+   },
+   "page": {
+    "edits": 1082,
+    "gold_chars": 2374,
+    "cer": 0.455771
+   },
+   "errors": {
+    "recognition": {
+     "lines": 57,
+     "edits": 78,
+     "gold_chars": 2229,
+     "cer": 0.034993
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 1,
+      "edits": 1
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 2,
+      "edits": 68
+     },
+     "not_detected": {
+      "lines": 1,
+      "edits": 18
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1951_01_011",
+   "page_index": 1,
+   "width": 3284,
+   "height": 4684,
+   "png_dpi": null,
+   "seconds": 12.956,
+   "line": {
+    "edits": 101,
+    "matched_edits": 53,
+    "missed_chars": 30,
+    "extra_chars": 18,
+    "gold_chars": 2689,
+    "cer": 0.03756,
+    "gold_lines": 80,
+    "pred_lines": 78,
+    "matched_lines": 77,
+    "precision": 0.987179,
+    "recall": 0.9625
+   },
+   "page": {
+    "edits": 67,
+    "gold_chars": 2768,
+    "cer": 0.024205
+   },
+   "errors": {
+    "recognition": {
+     "lines": 77,
+     "edits": 53,
+     "gold_chars": 2659,
+     "cer": 0.019932
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 0,
+      "edits": 0
+     },
+     "shorter": {
+      "lines": 1,
+      "edits": 21
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 1,
+      "edits": 18
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 3,
+      "edits": 30
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1951_01_011",
+   "page_index": 2,
+   "width": 3284,
+   "height": 4678,
+   "png_dpi": null,
+   "seconds": 12.485,
+   "line": {
+    "edits": 34,
+    "matched_edits": 29,
+    "missed_chars": 5,
+    "extra_chars": 0,
+    "gold_chars": 2752,
+    "cer": 0.012355,
+    "gold_lines": 74,
+    "pred_lines": 73,
+    "matched_lines": 73,
+    "precision": 1.0,
+    "recall": 0.986486
+   },
+   "page": {
+    "edits": 30,
+    "gold_chars": 2825,
+    "cer": 0.010619
+   },
+   "errors": {
+    "recognition": {
+     "lines": 73,
+     "edits": 29,
+     "gold_chars": 2747,
+     "cer": 0.010557
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 1,
+      "edits": 6
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 0,
+      "edits": 0
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 1,
+      "edits": 5
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1951_01_011",
+   "page_index": 3,
+   "width": 3284,
+   "height": 4678,
+   "png_dpi": null,
+   "seconds": 12.812,
+   "line": {
+    "edits": 68,
+    "matched_edits": 49,
+    "missed_chars": 7,
+    "extra_chars": 12,
+    "gold_chars": 2870,
+    "cer": 0.023693,
+    "gold_lines": 79,
+    "pred_lines": 79,
+    "matched_lines": 78,
+    "precision": 0.987342,
+    "recall": 0.987342
+   },
+   "page": {
+    "edits": 43,
+    "gold_chars": 2948,
+    "cer": 0.014586
+   },
+   "errors": {
+    "recognition": {
+     "lines": 78,
+     "edits": 49,
+     "gold_chars": 2863,
+     "cer": 0.017115
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 1,
+      "edits": 9
+     },
+     "shorter": {
+      "lines": 1,
+      "edits": 13
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 1,
+      "edits": 12
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 1,
+      "edits": 7
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1951_01_032",
+   "page_index": 0,
+   "width": 3284,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 11.549,
+   "line": {
+    "edits": 117,
+    "matched_edits": 52,
+    "missed_chars": 31,
+    "extra_chars": 34,
+    "gold_chars": 2082,
+    "cer": 0.056196,
+    "gold_lines": 72,
+    "pred_lines": 70,
+    "matched_lines": 67,
+    "precision": 0.957143,
+    "recall": 0.930556
+   },
+   "page": {
+    "edits": 840,
+    "gold_chars": 2153,
+    "cer": 0.390153
+   },
+   "errors": {
+    "recognition": {
+     "lines": 67,
+     "edits": 52,
+     "gold_chars": 2051,
+     "cer": 0.025353
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 1,
+      "edits": 19
+     },
+     "shorter": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 2,
+      "edits": 4
+     },
+     "no_gold_overlap": {
+      "lines": 1,
+      "edits": 30
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 5,
+      "edits": 31
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  },
+  {
+   "article_id": "1951_01_032",
+   "page_index": 1,
+   "width": 3273,
+   "height": 4673,
+   "png_dpi": null,
+   "seconds": 11.721,
+   "line": {
+    "edits": 298,
+    "matched_edits": 117,
+    "missed_chars": 122,
+    "extra_chars": 59,
+    "gold_chars": 1955,
+    "cer": 0.15243,
+    "gold_lines": 69,
+    "pred_lines": 66,
+    "matched_lines": 61,
+    "precision": 0.924242,
+    "recall": 0.884058
+   },
+   "page": {
+    "edits": 240,
+    "gold_chars": 2023,
+    "cer": 0.118636
+   },
+   "errors": {
+    "recognition": {
+     "lines": 61,
+     "edits": 117,
+     "gold_chars": 1833,
+     "cer": 0.06383
+    },
+    "length_mismatch": {
+     "longer": {
+      "lines": 1,
+      "edits": 16
+     },
+     "shorter": {
+      "lines": 4,
+      "edits": 50
+     }
+    },
+    "repeated_run": {
+     "lines": 0,
+     "edits": 0
+    },
+    "extra": {
+     "overlaps_gold": {
+      "lines": 5,
+      "edits": 59
+     },
+     "no_gold_overlap": {
+      "lines": 0,
+      "edits": 0
+     }
+    },
+    "missed": {
+     "partly_covered": {
+      "lines": 8,
+      "edits": 122
+     },
+     "not_detected": {
+      "lines": 0,
+      "edits": 0
+     }
+    }
+   }
+  }
+ ]
+}

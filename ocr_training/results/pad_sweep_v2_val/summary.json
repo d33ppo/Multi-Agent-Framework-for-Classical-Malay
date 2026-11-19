@@ -1,0 +1,178 @@
+[
+ {
+  "pad_x": 0.0,
+  "pad_y": 0.0,
+  "matched_line_cer": 0.102196,
+  "recognition_cer": 0.040531,
+  "page_cer": 0.144619,
+  "shorter_lines": 14,
+  "shorter_edits": 266,
+  "longer_lines": 4,
+  "longer_edits": 41,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ },
+ {
+  "pad_x": 0.1,
+  "pad_y": 0.0,
+  "matched_line_cer": 0.10309,
+  "recognition_cer": 0.041101,
+  "page_cer": 0.145054,
+  "shorter_lines": 15,
+  "shorter_edits": 262,
+  "longer_lines": 7,
+  "longer_edits": 101,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ },
+ {
+  "pad_x": 0.2,
+  "pad_y": 0.0,
+  "matched_line_cer": 0.104283,
+  "recognition_cer": 0.042448,
+  "page_cer": 0.147181,
+  "shorter_lines": 12,
+  "shorter_edits": 238,
+  "longer_lines": 6,
+  "longer_edits": 80,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ },
+ {
+  "pad_x": 0.3,
+  "pad_y": 0.0,
+  "matched_line_cer": 0.103885,
+  "recognition_cer": 0.041982,
+  "page_cer": 0.147181,
+  "shorter_lines": 12,
+  "shorter_edits": 231,
+  "longer_lines": 8,
+  "longer_edits": 91,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ },
+ {
+  "pad_x": 0.0,
+  "pad_y": 0.05,
+  "matched_line_cer": 0.104183,
+  "recognition_cer": 0.042759,
+  "page_cer": 0.146988,
+  "shorter_lines": 16,
+  "shorter_edits": 291,
+  "longer_lines": 5,
+  "longer_edits": 80,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ },
+ {
+  "pad_x": 0.1,
+  "pad_y": 0.05,
+  "matched_line_cer": 0.102544,
+  "recognition_cer": 0.040686,
+  "page_cer": 0.146117,
+  "shorter_lines": 15,
+  "shorter_edits": 273,
+  "longer_lines": 5,
+  "longer_edits": 46,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ },
+ {
+  "pad_x": 0.2,
+  "pad_y": 0.05,
+  "matched_line_cer": 0.105326,
+  "recognition_cer": 0.043174,
+  "page_cer": 0.148245,
+  "shorter_lines": 13,
+  "shorter_edits": 251,
+  "longer_lines": 5,
+  "longer_edits": 45,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ },
+ {
+  "pad_x": 0.3,
+  "pad_y": 0.05,
+  "matched_line_cer": 0.106618,
+  "recognition_cer": 0.044107,
+  "page_cer": 0.148196,
+  "shorter_lines": 12,
+  "shorter_edits": 264,
+  "longer_lines": 8,
+  "longer_edits": 86,
+  "P": 0.960503,
+  "R": 0.948582,
+  "gold_lines": 564,
+  "pages": 10,
+  "articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ]
+ }
+]

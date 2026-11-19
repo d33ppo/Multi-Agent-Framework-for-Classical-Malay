@@ -213,6 +213,45 @@ class ProviderTests(TempDirTestCase):
         self.assertEqual([line.text for line in provider.recognise_page(page(page_png()))], ["ب"])
         self.assertEqual([line.text for line in provider.read_page(page_png())], ["", "ب"])
 
+    def test_box_padding_is_off_by_default(self):
+        provider, _, recogniser = provider_with(column(300, 700, [100]))
+        self.assertEqual((provider.pad_x, provider.pad_y), (0.0, 0.0))
+        provider.read_page(page_png())
+        self.assertEqual(recogniser.crops[0].shape,
+                         line_crop(np.zeros((PAGE_H, PAGE_W, 3)), (300, 100, 700, 130)).shape)
+
+    def test_box_padding_widens_only_the_crop(self):
+        # A 30 px high box: pad_x 0.2 adds 6 px left and right, pad_y 0.1 adds 3 px top and bottom.
+        os.environ["OCR_BOX_PAD_X"], os.environ["OCR_BOX_PAD_Y"] = "0.2", "0.1"
+        provider, _, recogniser = provider_with(column(300, 700, [100]))
+        self.assertEqual((provider.pad_x, provider.pad_y), (0.2, 0.1))
+        lines = provider.read_page(page_png())
+        expected = line_crop(np.zeros((PAGE_H, PAGE_W, 3)), (294, 97, 706, 133))
+        self.assertEqual(recogniser.crops[0].shape, expected.shape)
+        self.assertEqual(lines[0].xyxy, (300.0, 100.0, 700.0, 130.0))  # the line keeps the detected box
+        self.assertAlmostEqual(lines[0].detector_confidence, 0.9, places=5)
+
+    def test_given_boxes_are_not_padded(self):
+        provider, _, recogniser = provider_with([], pad_x=0.3, pad_y=0.05, detector=RaisingDetector())
+        provider.read_boxes(page_png(), [(300, 100, 700, 130)])
+        self.assertEqual(recogniser.crops[0].shape,
+                         line_crop(np.zeros((PAGE_H, PAGE_W, 3)), (300, 100, 700, 130)).shape)
+
+    def test_pad_box_clips_to_the_page_and_keeps_extra_items(self):
+        self.assertEqual(ocr_trocr.pad_box((5, 2, 95, 22, 0.8), 0.5, 0.5, 100, 30), (0.0, 0.0, 100.0, 30.0, 0.8))
+        self.assertEqual(ocr_trocr.pad_box((10, 10, 50, 30, 0.8), 0.25, 0.0, 100, 100), (5.0, 10.0, 55.0, 30.0, 0.8))
+        box = (10, 10, 50, 30, 0.8)
+        self.assertIs(ocr_trocr.pad_box(box, 0.0, 0.0, 100, 100), box)
+
+    def test_invalid_box_padding_is_rejected(self):
+        for value in ("wide", "-0.1", "nan", "inf"):
+            os.environ["OCR_BOX_PAD_X"] = value
+            with self.assertRaises(ValueError, msg=value):
+                provider_with([])
+        del os.environ["OCR_BOX_PAD_X"]
+        with self.assertRaises(ValueError):
+            provider_with([], pad_y=-0.05)
+
     def test_undecodable_page_raises(self):
         provider, _, _ = provider_with([])
         with self.assertRaises(ValueError):
@@ -463,6 +502,19 @@ class EvalScriptTests(TempDirTestCase):
         self.assertEqual([text for _, text in script.gold_lines(pages[1], 1000, 2000)], ["ايبو فد"])
         self.assertEqual(script.load_test_pages(export, ["1950_11_009"])[0]["article_id"], "1950_11_009")
 
+    def test_val_split_uses_the_training_rule(self):
+        script = load_eval_script()
+        export = self.write_export()  # articles 1950_11_002 (via the override) and 1950_11_009
+        self.assertEqual(script.split_article_ids(export, ["1950_11_009"], "test"), ["1950_11_009"])
+        # One non-test article left: split_articles always keeps at least one validation article.
+        self.assertEqual(script.split_article_ids(export, ["1950_11_009"], "val"), ["1950_11_002"])
+        # The same call the dataset builder makes, so the validation articles match training.
+        with mock.patch.object(td, "split_articles", wraps=td.split_articles) as split:
+            script.split_article_ids(export, ["1950_11_009"], "val")
+        split.assert_called_once_with({"1950_11_002", "1950_11_009"}, ["1950_11_009"])
+        with self.assertRaises(ValueError):
+            script.split_article_ids(export, ["1950_11_009"], "train")
+
     def test_page_evaluation_with_fake_models(self):
         script = load_eval_script()
         gold = [((100.0, 100.0, 1000.0, 130.0), "ايبو"), ((100.0, 150.0, 1000.0, 180.0), "ڤد")]
@@ -490,6 +542,40 @@ class EvalScriptTests(TempDirTestCase):
         self.assertEqual(result["page"]["cer"], 0.0)  # both texts follow the export order
         self.assertEqual(result["errors"]["extra"]["no_gold_overlap"]["lines"], 0)
 
+    def test_main_on_the_val_split_writes_val_files_with_the_padding(self):
+        script = load_eval_script()
+        export = self.write_export()
+        folder = self.tmp / "pages" / "1950_11_002" / "pages"
+        folder.mkdir(parents=True)
+        (folder / "page_00.png").write_bytes(page_png(width=1000, height=2000))
+        articles = self.tmp / "test_articles.json"
+        articles.write_text(json.dumps(["1950_11_009"]), encoding="utf-8")
+
+        built = {}
+
+        def build(*args, **kwargs):
+            built.update(kwargs)
+            provider, _, _ = provider_with([(100, 200, 600, 300, 0.9)], pad_x=kwargs["pad_x"], pad_y=kwargs["pad_y"])
+            provider.model_path, provider.detector_path = Path("trocr_v2"), Path("lines.pt")
+            return provider
+
+        self.patch("ocr_trocr.TrOCROCRProvider", build)
+        out = self.tmp / "out"
+        argv = ["eval_page_cer.py", "--export", str(export), "--pages-base", str(self.tmp / "pages"),
+                "--test-articles", str(articles), "--out-dir", str(out), "--split", "val",
+                "--pad-x", "0.2", "--pad-y", "0.05"]
+        with mock.patch.object(sys, "argv", argv), mock.patch("builtins.print"):
+            script.main()
+
+        self.assertEqual((built["pad_x"], built["pad_y"]), (0.2, 0.05))
+        report = json.loads((out / "page_eval_greedy_val.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["split"], "val")
+        self.assertEqual(report["config"]["articles"], ["1950_11_002"])  # the test article is never evaluated
+        self.assertEqual((report["config"]["box_pad_x"], report["config"]["box_pad_y"]), (0.2, 0.05))
+        self.assertEqual([(p["article_id"], p["page_index"]) for p in report["per_page"]], [("1950_11_002", 0)])
+        self.assertTrue((out / "predictions_greedy_val.jsonl").is_file())
+        self.assertFalse((out / "page_eval_greedy.json").exists())  # the test-split report is not overwritten
+
     def test_main_with_gold_boxes_writes_a_gold_report(self):
         script = load_eval_script()
         export = self.write_export()
@@ -515,6 +601,8 @@ class EvalScriptTests(TempDirTestCase):
         self.assertEqual((report["overall"]["detector_precision"], report["overall"]["detector_recall"]), (1.0, 1.0))
         self.assertIn("recognition", report["overall"]["errors"])
         self.assertEqual(report["overall"]["errors"]["recognition"]["lines"], 2)
+        self.assertEqual((report["split"], report["config"]["box_pad_x"], report["config"]["box_pad_y"]),
+                         ("test", 0.0, 0.0))
         self.assertTrue((out / "page_eval_greedy_gold_boxes.csv").is_file())
         self.assertFalse((out / "page_eval_greedy.json").exists())  # the detector run is not overwritten
 

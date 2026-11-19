@@ -7,7 +7,8 @@ The preprocessing is the training code itself, imported from ocr_training/:
 yolo_prefill.predict_boxes (conf 0.35, contained-box suppression),
 yolo_prefill.reading_order (XY-cut, columns right to left) and
 trocr_dataset.crop_for(..., train=False) (0.12 x box height margin, cut from
-the full-resolution page). Model outputs only get NFC and whitespace collapse;
+the full-resolution page). Detector boxes can be padded before that crop
+(OCR_BOX_PAD_X, OCR_BOX_PAD_Y, default 0: off). Model outputs only get NFC and whitespace collapse;
 LABEL_MAP is a label fix and is not applied to outputs.
 
 Both models load from local files only. Ultralytics is put in offline mode with
@@ -51,6 +52,7 @@ MAX_LENGTH = 128
 DEFAULT_NUM_BEAMS = 1  # greedy, the decoding behind the reported test CER
 DEFAULT_BATCH_SIZE = 4  # what the Colab CPU evaluation used without running out of RAM
 DEFAULT_CONFIDENCE_THRESHOLD = 0.60  # UNCALIBRATED placeholder until task 3.6
+DEFAULT_BOX_PAD = 0.0  # detector boxes are cropped as detected unless OCR_BOX_PAD_X / OCR_BOX_PAD_Y are set
 
 
 def normalise_output(text: str) -> str:
@@ -74,6 +76,35 @@ def confidence_threshold() -> float:
     if not 0.0 <= value <= 1.0:
         raise ValueError(f"OCR_CONFIDENCE_THRESHOLD must be between 0 and 1, got {value}.")
     return value
+
+
+def box_pad(name: str) -> float:
+    """OCR_BOX_PAD_X or OCR_BOX_PAD_Y: padding as a fraction of the box height, 0 or more. Unset means 0."""
+    raw = env_value(name)
+    if not raw:
+        return DEFAULT_BOX_PAD
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a number of at least 0 (a fraction of the box height), got '{raw}'.") from None
+    if not (value >= 0.0 and math.isfinite(value)):
+        raise ValueError(f"{name} must be at least 0, got {value}.")
+    return value
+
+
+def pad_box(box, pad_x: float, pad_y: float, width: int, height: int):
+    """
+    Widen a detected (x1, y1, x2, y2, ...) box by pad_x x box height on the left and right
+    and pad_y x box height at the top and bottom, clipped to the page. Extra items (the
+    detector confidence) are kept. With no padding the box is returned unchanged.
+    """
+    if not pad_x and not pad_y:
+        return box
+    x1, y1, x2, y2 = (float(v) for v in box[:4])
+    box_height = max(1.0, y2 - y1)
+    dx, dy = pad_x * box_height, pad_y * box_height
+    padded = (max(0.0, x1 - dx), max(0.0, y1 - dy), min(float(width), x2 + dx), min(float(height), y2 + dy))
+    return (*padded, *box[4:])
 
 
 def decode_page(png: bytes) -> np.ndarray:
@@ -209,13 +240,18 @@ class TrOCROCRProvider:
     def __init__(self, model_path: str | Path | None = None, detector_path: str | Path | None = None, *,
                  imgsz: int | None = None, num_beams: int | None = None, batch_size: int | None = None,
                  device: str | None = None, threads: int | None = None, threshold: float | None = None,
-                 detector=None, recogniser=None):
+                 pad_x: float | None = None, pad_y: float | None = None, detector=None, recogniser=None):
         self.imgsz = imgsz or _get_int_env("LINE_DETECTOR_IMGSZ") or DEFAULT_LINE_DETECTOR_IMGSZ
         self.num_beams = num_beams or _get_int_env("OCR_NUM_BEAMS") or DEFAULT_NUM_BEAMS
         self.batch_size = batch_size or _get_int_env("OCR_BATCH_SIZE") or DEFAULT_BATCH_SIZE
         self.threads = threads or _get_int_env("OCR_TORCH_THREADS")
         self.device_setting = device or env_value("OCR_DEVICE", "auto")
         self.threshold = confidence_threshold() if threshold is None else threshold
+        # Detector boxes only; given boxes (read_boxes) are cropped as given.
+        self.pad_x = box_pad("OCR_BOX_PAD_X") if pad_x is None else pad_x
+        self.pad_y = box_pad("OCR_BOX_PAD_Y") if pad_y is None else pad_y
+        if self.pad_x < 0 or self.pad_y < 0:
+            raise ValueError("Box padding must be at least 0.")
 
         model_path = model_path or env_value("OCR_MODEL_PATH")
         detector_path = detector_path or env_value("LINE_DETECTOR_PATH", DEFAULT_LINE_DETECTOR_PATH)
@@ -251,7 +287,11 @@ class TrOCROCRProvider:
             )
 
     def read_page(self, png: bytes) -> list[DetectedLine]:
-        """Every detected line in reading order, including lines the recogniser left empty."""
+        """
+        Every detected line in reading order, including lines the recogniser left empty.
+        With OCR_BOX_PAD_X / OCR_BOX_PAD_Y the crop is taken from the padded box, but each
+        line still reports the box as detected.
+        """
         page_bgr = decode_page(png)
         with self._lock:
             self._load()
@@ -259,7 +299,7 @@ class TrOCROCRProvider:
                 yp.predict_boxes(self._detector, page_bgr, conf=DETECTOR_CONF, imgsz=self.imgsz),
                 page_bgr.shape[1],
             )
-            return self._recognise_boxes(page_bgr, boxes)
+            return self._recognise_boxes(page_bgr, boxes, pad=True)
 
     def read_boxes(self, png: bytes, boxes: list) -> list[DetectedLine]:
         """
@@ -271,12 +311,14 @@ class TrOCROCRProvider:
             self._load(detector=False)
             return self._recognise_boxes(page_bgr, [(*box[:4], None) for box in boxes])
 
-    def _recognise_boxes(self, page_bgr: np.ndarray, boxes: list) -> list[DetectedLine]:
+    def _recognise_boxes(self, page_bgr: np.ndarray, boxes: list, pad: bool = False) -> list[DetectedLine]:
         if not boxes:
             return []
+        height, width = page_bgr.shape[:2]
+        crop_boxes = [pad_box(box, self.pad_x, self.pad_y, width, height) for box in boxes] if pad else boxes
         # The recogniser was trained on crops read with PIL, which are RGB.
         page_rgb = cv2.cvtColor(page_bgr, cv2.COLOR_BGR2RGB)
-        results = self._recogniser([line_crop(page_rgb, box) for box in boxes])
+        results = self._recogniser([line_crop(page_rgb, box) for box in crop_boxes])
         return [
             DetectedLine(order, tuple(float(v) for v in box[:4]), None if box[4] is None else float(box[4]),
                          text, confidence)

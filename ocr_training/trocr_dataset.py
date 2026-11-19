@@ -39,8 +39,9 @@ EVAL_MARGIN_FRAC = 0.12     # margin used at evaluation / inference
 # - ک (Persian keheh) and ݢ are encoding variants of ك and Jawi ڬ.
 # - پ appears only as a typo for ڽ (e.g. "باپق" for banyak).
 # - إ is used by one corrector only; the print shows a plain alif.
+# - ⹁ (reversed comma, U+2E41) is an encoding variant of the Arabic comma ،.
 # Digits are NOT changed: the print mixes Western digits and the Jawi ٢ repetition mark.
-LABEL_MAP = {"ڤ": "ف", "ک": "ك", "ݢ": "ڬ", "پ": "ڽ", "إ": "ا"}
+LABEL_MAP = {"ڤ": "ف", "ک": "ك", "ݢ": "ڬ", "پ": "ڽ", "إ": "ا", "⹁": "،"}
 LABEL_FIX_COUNTS: Counter = Counter()
 
 # Pages whose labels are the uncorrected auto-transliteration (pre-filled from the wrong sheet).
