@@ -1,0 +1,50 @@
+{
+ "created_at": "2026-11-19T06:05:30+00:00",
+ "weights": "qalam_lines_v2_e200.pt",
+ "settings": {
+  "model": "yolov8s.pt",
+  "imgsz": 1280,
+  "epochs": 200,
+  "patience": 40,
+  "batch": 8,
+  "device": "0"
+ },
+ "epochs_run": 185,
+ "validation": {
+  "precision": 0.970559,
+  "recall": 0.968085,
+  "map50": 0.988939,
+  "map50_95": 0.759571
+ },
+ "dataset": {
+  "train_pages": 89,
+  "train_boxes": 5198,
+  "val_pages": 10,
+  "val_boxes": 564,
+  "val_articles": [
+   "1950_11_005",
+   "1950_11_014",
+   "1950_11_015",
+   "1951_01_011",
+   "1951_01_032"
+  ],
+  "excluded_test_articles": [
+   "1950_11_009",
+   "1950_11_013",
+   "1950_12_003",
+   "1950_12_007",
+   "1950_12_010",
+   "1950_12_014"
+  ],
+  "no_metadata": [],
+  "duplicates_dropped": [],
+  "incomplete_pages": [],
+  "no_image": []
+ },
+ "export": "project-2-at-2026-11-15-23-25-3ec274c6.json",
+ "environment": {
+  "ultralytics": "8.4.191",
+  "torch": "2.14.1+cu130",
+  "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU"
+ }
+}

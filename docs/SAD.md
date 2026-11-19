@@ -91,7 +91,7 @@ Method A and Method B run in parallel on the same OCR text. Translation must fin
 | Component | Model/Tool | Notes |
 | --- | --- | --- |
 | OCR preprocessing | OpenCV, PyMuPDF | PDF/image handling and page preprocessing. |
-| Fine-tuned OCR | YOLO line detector (`ultralytics`) and fine-tuned TrOCR (`transformers`), both trained in Google Colab and run locally | Target CER at most 10% and character accuracy at least 90%. TrOCR v1 line CER is 3.78% (greedy) on the locked test articles. |
+| Fine-tuned OCR | YOLO line detector (`ultralytics`) and fine-tuned TrOCR (`transformers`), run locally. The configured pair is `models/trocr_v2` with `models/yolo/qalam_lines_v2_e200.pt` at `LINE_DETECTOR_IMGSZ=1280` | Target CER at most 10% and character accuracy at least 90%. On the locked test articles: 8.68% matched-line CER end to end on the 13 test pages (TrOCR v2 + YOLO v2 200 epochs at imgsz 1280; 3.08% on hand-drawn boxes); Tesseract 64.3% on hand-cut lines. |
 | Romanisation Method A | `mesolitica/jawi-nanot5-small-malaysian-cased` via `transformers`, run locally | Pretrained model used as-is (no fine-tuning). Reported chrF2++ 98.01 Jawi to Rumi on modern Jawi. |
 | Romanisation Method B | Reverse-lookup dictionary built from `mesolitica/jawi-ms-en` (`wikipedia-1word.json` + `rumi-set.json`/`jawi-set.json` train split) | Rule-based. Retries pre-1986 spelling variants, splits joined prefixes, and flags ambiguous/unknown words. |
 | OCR baseline | Tesseract | Used as benchmark baseline. |
@@ -219,10 +219,11 @@ flowchart LR
 
 | Step | Detail |
 | --- | --- |
+| Models | `OCR_MODEL_PATH=models/trocr_v2`, `LINE_DETECTOR_PATH=models/yolo/qalam_lines_v2_e200.pt`, `LINE_DETECTOR_IMGSZ=1280` (as in `.env.example`). When the detector variables are unset the code falls back to the v1 detector at 960. |
 | Loading | Both models load once, on the first page, behind a lock. Pages are processed one at a time, which keeps memory bounded. The device is `OCR_DEVICE` (`auto` uses CUDA when available, otherwise CPU) and `OCR_TORCH_THREADS` sets the CPU threads. `use_cache` is switched on for decoding; without it CPU decoding is very slow. |
 | Colour order | The detector gets the page as BGR (as `cv2.imread` gave it in training). The recogniser gets RGB crops (as PIL gave them in training). |
 | Box padding | `OCR_BOX_PAD_X` and `OCR_BOX_PAD_Y` (default 0, off) widen each detected box by that fraction of its height, left/right and top/bottom, clipped to the page, before the training crop margin is added. Only the crop changes: each line still reports the detected box. |
-| Decoding | `OCR_NUM_BEAMS`, default 1 (greedy). Greedy is the decoding behind the reported 3.78% test CER. |
+| Decoding | `OCR_NUM_BEAMS`, default 1 (greedy). Greedy is the decoding behind every reported CER. |
 | Confidence | exp(mean token log-prob) per line: from `compute_transition_scores` up to the first end token for greedy, from `sequences_scores` for beam search. Generation scores are dropped after each batch. |
 | Low confidence | `low_confidence` is true when the confidence is below `OCR_CONFIDENCE_THRESHOLD` (default 0.60). The threshold is not calibrated yet (task 3.6), so the flag is recorded for the reviewer and does not change the run status. |
 | Normalisation | Model output gets NFC and collapsed whitespace only. `LABEL_MAP` is a ground-truth fix and is not applied to model output. |

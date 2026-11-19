@@ -40,9 +40,9 @@ TESSERACT_CMD=
 
 JAWI_NEURAL_MODEL=mesolitica/jawi-nanot5-small-malaysian-cased
 
-OCR_MODEL_PATH=models/trocr_v1
-LINE_DETECTOR_PATH=models/yolo/qalam_lines_cpu25.pt
-LINE_DETECTOR_IMGSZ=960
+OCR_MODEL_PATH=models/trocr_v2
+LINE_DETECTOR_PATH=models/yolo/qalam_lines_v2_e200.pt
+LINE_DETECTOR_IMGSZ=1280
 OCR_NUM_BEAMS=1
 OCR_CONFIDENCE_THRESHOLD=0.60
 MAX_UPLOAD_MB=25
@@ -87,9 +87,9 @@ These variables are read by the document upload route and the background job run
 | `PDF_RENDER_DPI` | `400` for `trocr`, `300` otherwise | Resolution used to render PDF pages to PNG images for OCR. When unset it follows the OCR provider: the TrOCR model and the YOLO line detector were trained on 400 DPI pages, so `trocr` gets 400. Setting it overrides this for every provider. The DPI is recorded in `stages.render.dpi` and `stages.ocr.render_dpi`. Image uploads keep their own resolution and record `null`. |
 | `OCR_PROVIDER` | see note | `trocr` runs the fine-tuned TrOCR model, `tesseract` runs the local Tesseract baseline, `fixture` reads saved text instead of running a model. When unset: `trocr` if `OCR_MODEL_PATH` is set, otherwise `tesseract`. |
 | `OCR_FIXTURE_DIR` | `data/ocr_fixtures` | Folder read by the fixture provider. |
-| `OCR_MODEL_PATH` | empty | Folder with the fine-tuned TrOCR model and processor, for example `models/trocr_v1`. Setting it makes `trocr` the default provider. |
-| `LINE_DETECTOR_PATH` | `models/yolo/qalam_lines_cpu25.pt` | YOLO line detector weights used by `trocr`. |
-| `LINE_DETECTOR_IMGSZ` | `960` | Image size passed to the detector. Keep it at the size the detector was trained at. |
+| `OCR_MODEL_PATH` | empty | Folder with the fine-tuned TrOCR model and processor. Use `models/trocr_v2`, the evaluated model. Setting it makes `trocr` the default provider. |
+| `LINE_DETECTOR_PATH` | `models/yolo/qalam_lines_cpu25.pt` | YOLO line detector weights used by `trocr`. Set it to `models/yolo/qalam_lines_v2_e200.pt`, the evaluated detector (as in `.env.example`). The unset default is the v1 CPU prototype. |
+| `LINE_DETECTOR_IMGSZ` | `960` | Image size passed to the detector. Keep it at the size the detector was trained at: `1280` for the v2 detectors (as in `.env.example`), `960` for the v1 prototype. |
 | `OCR_NUM_BEAMS` | `1` | TrOCR decoding. `1` is greedy, the decoding behind the reported test CER. |
 | `OCR_BATCH_SIZE` | `4` | Line crops decoded together. Lower it if the machine runs out of memory. |
 | `OCR_TORCH_THREADS` | torch default | CPU threads used by torch for TrOCR. |
@@ -198,16 +198,16 @@ The fine-tuned TrOCR model and the YOLO line detector stay on Google Drive and a
 
 ```text
 models/
-  trocr_v1/                  the saved "best" folder from the TrOCR notebook
+  trocr_v2/                  the TrOCR v2 model folder (the evaluated recogniser)
     config.json
     generation_config.json
     model.safetensors
     preprocessor_config.json and the tokenizer files written by processor.save_pretrained
   yolo/
-    qalam_lines_cpu25.pt     the line detector, trained at imgsz 960
+    qalam_lines_v2_e200.pt   the line detector, YOLOv8s trained 200 epochs at imgsz 1280 (the evaluated detector)
 ```
 
-Then set `OCR_MODEL_PATH=models/trocr_v1` in `.env`. Uploads now use the `trocr` provider, and PDF pages are rendered at 400 DPI, the resolution both models were trained on (leave `PDF_RENDER_DPI` unset). A PNG or JPEG upload is not rescaled, so it should be a scan at about 400 DPI; at a much lower resolution the line boxes and crops differ from what the models saw in training. `LINE_DETECTOR_PATH` defaults to the path above and `LINE_DETECTOR_IMGSZ` to 960. Install `ultralytics` and `transformers` from `requirements.txt`. Both models load from local files only and are loaded once, on the first uploaded page, so the first page takes longer.
+Then set `OCR_MODEL_PATH=models/trocr_v2`, `LINE_DETECTOR_PATH=models/yolo/qalam_lines_v2_e200.pt` and `LINE_DETECTOR_IMGSZ=1280` in `.env` (`.env.example` already has the two detector lines). This pair gives 8.68% matched-line CER on the locked test pages; see `ocr_training/README.md` for the other setups. The v1 models (`models/trocr_v1`, `models/yolo/qalam_lines_cpu25.pt` at imgsz 960) still work and remain the code defaults when the variables are unset. Uploads now use the `trocr` provider, and PDF pages are rendered at 400 DPI, the resolution both models were trained on (leave `PDF_RENDER_DPI` unset). A PNG or JPEG upload is not rescaled, so it should be a scan at about 400 DPI; at a much lower resolution the line boxes and crops differ from what the models saw in training. When unset, `LINE_DETECTOR_PATH` falls back to the v1 detector and `LINE_DETECTOR_IMGSZ` to 960, so set both. Install `ultralytics` and `transformers` from `requirements.txt`. Both models load from local files only and are loaded once, on the first uploaded page, so the first page takes longer.
 
 If a model file is missing, uploads return `503` with the missing path. Set `OCR_PROVIDER=tesseract` to run the baseline instead.
 

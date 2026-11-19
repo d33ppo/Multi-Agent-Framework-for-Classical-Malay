@@ -21,6 +21,9 @@ These scripts were run in Google Colab from `MyDrive/jawi_dataset/`, so they use
 | `notebooks/trocr_v1_colab.ipynb` | TrOCR v1 training and evaluation, as run (with outputs) |
 | `splits/test_articles.json` | Locked test articles, never used to train the detector or TrOCR |
 | `results/trocr_v1/` | Metrics only (no weights, no predictions) |
+| `results/page_eval_v2/`, `results/page_eval_v2_e200/` | Page-level test results of the v2 system (`scripts/eval_page_cer.py`), metrics only |
+| `results/yolo_v2_e200/`, `results/yolo_e200_val/` | 200-epoch detector: training metrics and its page-level validation result |
+| `results/pad_sweep_v2_val/summary.json` | Box-padding sweep on the validation split |
 
 ### How `trocr_v1_colab.ipynb` was run
 
@@ -34,6 +37,35 @@ so its cells are not in run order:
    "memory-safe Tesseract cell". It reads `test_results_greedy.json`, so it must run after section 6.
 
 The last cell ("7. Tesseract baseline") is the earlier version that ran out of memory. It was not used.
+
+## Results summary (locked test set: 6 articles, 13 pages, 641 lines)
+
+| Setup | CER |
+|---|---|
+| Tesseract (`ara`, `--psm 7`), on hand-cut line images | 64.3% |
+| TrOCR v2, hand-drawn boxes (recogniser alone) | 3.08% |
+| Full system: TrOCR v1 + YOLO v1 (CPU prototype) | 18.9% |
+| Full system: TrOCR v1 + YOLO v2 | 11.1% |
+| Full system: TrOCR v2 + YOLO v2 (100 epochs) | 10.3% |
+| Full system: TrOCR v2 + YOLO v2 (200 epochs), **final** | **8.68%** |
+
+- The Tesseract row is line CER on the hand-cut test crops (`results/trocr_v1/baseline_tesseract.json`).
+- The other rows are matched-line CER from `scripts/eval_page_cer.py` on the 400 DPI test pages, greedy decoding:
+  predicted and gold lines are matched at IoU 0.5, missed gold lines count as full deletions and extra lines as
+  full insertions. The hand-drawn-box row (`--gold-boxes`) skips the detector, so it is recognition error only.
+- Full system means the product path: YOLO boxes, XY-cut reading order, the eval crop, TrOCR. YOLO v1 is
+  `qalam_lines_cpu25.pt` at imgsz 960; the YOLO v2 detectors are YOLOv8s at imgsz 1280.
+- Sources: `results/page_eval_v1/` (18.9%), `results/page_eval_v2/` (10.3% and 3.08%),
+  `results/page_eval_v2_e200/` (8.68%). The 11.1% run (`results/page_eval_v1_yolov2/`) is not committed.
+- Box padding (`OCR_BOX_PAD_X`/`_Y`) did not help on the validation split (`results/pad_sweep_v2_val/summary.json`),
+  so it stays off.
+
+**How the 200-epoch detector was chosen.** It was selected on the validation split only, before the test pages
+were run with it. The detector was retrained with `train_yolo.py --epochs 200 --patience 40` (it stopped at epoch
+185) and kept because it beat the 100-epoch detector on the validation articles with the same TrOCR v2:
+matched-line CER 8.17% against 10.22% (`results/yolo_e200_val/`, against the `padx0_pady0` row of the padding
+sweep), and detector validation mAP50-95 0.760 against 0.744 (`results/yolo_v2_e200/metrics.json`). The test
+result above was produced once, after that choice.
 
 ## TrOCR v1 results (test set, 641 lines, 6 held-out articles)
 
