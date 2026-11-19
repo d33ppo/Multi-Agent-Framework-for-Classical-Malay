@@ -162,19 +162,20 @@ def gold_order_for(orders: dict, key: str, gold_count: int) -> list[int] | None:
 def evaluate_page(provider, png: bytes, gold: list[tuple], gold_boxes: bool = False,
                   gold_order: list[int] | None = None) -> tuple[dict, list]:
     """
-    Run the provider on one page (detected boxes, or the gold boxes in export order) and score it.
+    Run the provider on one page (detected boxes, or the gold boxes) and score it.
     gold_order is the reviewed reading order of the gold lines; without it the export order is used.
+    Gold boxes are sent in that same order, so with --gold-boxes the page CER is recognition only.
     """
+    order = list(range(len(gold))) if gold_order is None else gold_order
     started = time.perf_counter()
-    detected = provider.read_boxes(png, [box for box, _ in gold]) if gold_boxes else provider.read_page(png)
+    detected = provider.read_boxes(png, [gold[j][0] for j in order]) if gold_boxes else provider.read_page(png)
     seconds = time.perf_counter() - started
     pred = [(line.xyxy if line.detector_confidence is None else (*line.xyxy, line.detector_confidence), line.text)
             for line in detected]
     line_metrics = stage_metrics.matched_line_cer(pred, gold, IOU_THRESHOLD)
     errors = stage_metrics.line_error_breakdown(pred, gold, IOU_THRESHOLD)
     pred_text = "\n".join(line.text for line in detected if line.text)  # what the product passes on
-    order = list(range(len(gold))) if gold_order is None else gold_order
-    gold_text = "\n".join(gold[j][1] for j in order)
+    gold_text ="\n".join(gold[j][1] for j in order)
     page = stage_metrics.page_cer(pred_text, gold_text)
     reading = stage_metrics.reading_order_agreement(pred, gold, order, IOU_THRESHOLD)
     reading["gold_order"] = "export" if gold_order is None else "reviewed"
@@ -255,7 +256,7 @@ def main() -> None:
     parser.add_argument("--reading-order", default=str(DEFAULT_READING_ORDER),
                         help="JSON of reviewed gold reading orders per page; used when the file exists")
     parser.add_argument("--gold-boxes", action="store_true",
-                        help="skip the detector: recognise the Label Studio boxes in annotation order")
+                        help="skip the detector: recognise the Label Studio boxes in gold reading order")
     args = parser.parse_args()
 
     from ocr_trocr import TrOCROCRProvider, decode_page

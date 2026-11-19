@@ -151,6 +151,41 @@ class ReadingOrderTests(TempDirTestCase):
         self.assertEqual(self.order(named), ["R1", "R2", "R3", "R4", "L1", "L2", "L3", "L4", "H",
                                              "R5", "R6", "R7", "L5", "L6"])
 
+    def test_page_number_below_everything_is_read_last(self):
+        # A page number just right of the gutter, under the columns: XY-cut alone puts it at the foot
+        # of the right column, before the left column.
+        named = [((552, 600, 592, 630), "page")] + self.columns()
+        self.assertEqual(self.order(named), ["R1", "R2", "R3", "R4", "L1", "L2", "L3", "L4", "page"])
+
+    def test_a_wide_box_at_the_bottom_is_not_a_page_number(self):
+        named = self.columns() + [((560, 600, 1000, 630), "foot R"), ((100, 650, 540, 680), "foot L")]
+        self.assertIsNone(yp._page_number([box for box, _ in named]))
+        self.assertEqual(self.order(named), ["R1", "R2", "R3", "R4", "foot R", "L1", "L2", "L3", "L4", "foot L"])
+        # A short box that is not below everything is not a page number either.
+        self.assertIsNone(yp._page_number([box for box, _ in self.columns()] + [(530, 200, 570, 230)]))
+
+    def test_tall_headline_at_the_top_of_the_left_column_is_read_first(self):
+        # A masthead (over 1.8 line heights tall) above the left column: XY-cut alone reads the
+        # whole right column before it.
+        left = [((100, y, 540, y + 30), f"L{i}") for i, y in enumerate([200, 250, 300, 350], 1)]
+        right = [((560, y, 1000, y + 30), f"R{i}") for i, y in enumerate([100, 150, 200, 250, 300, 350], 1)]
+        named = left + right + [((150, 100, 500, 170), "masthead")]
+        self.assertEqual(self.order(named),
+                         ["masthead", "R1", "R2", "R3", "R4", "R5", "R6", "L1", "L2", "L3", "L4"])
+
+    def test_gutter_spanning_title_in_the_top_band_is_read_first(self):
+        named = self.columns() + [((150, 40, 950, 75), "title")]
+        self.assertEqual(self.order(named)[0], "title")
+
+    def test_a_heading_with_text_above_it_stays_in_place(self):
+        # A full-width heading in the top band with column lines above it is not "before the columns".
+        ys = [100, 150, 300, 350, 400, 450, 500, 550]
+        right = [((560, y, 1000, y + 30), f"R{i}") for i, y in enumerate(ys, 1)]
+        left = [((100, y, 540, y + 30), f"L{i}") for i, y in enumerate(ys, 1)]
+        named = left + right + [((100, 210, 1000, 260), "H")]
+        self.assertEqual(yp._headlines([box for box, _ in named], 8.8), set())
+        self.assertEqual(self.order(named)[:5], ["R1", "R2", "L1", "L2", "H"])
+
     def test_a_small_box_in_the_gutter_is_not_a_heading(self):
         # A page number in the gutter crosses it but does not reach into the columns.
         self.assertTrue(yp._spans_gutter((100, 0, 1000, 30), (541, 560), 100, 1000))
@@ -594,6 +629,15 @@ class EvalScriptTests(TempDirTestCase):
                                   {"article_id": "a", "page_index": 1, **reviewed}])
         self.assertEqual((summary["order_kendall_tau"], summary["order_kendall_tau_page_mean"]), (0.0, 0.0))
         self.assertEqual(summary["pages_with_reviewed_order"], 1)
+
+    def test_gold_boxes_follow_the_reviewed_order(self):
+        script = load_eval_script()
+        gold = [((100.0, 100.0, 540.0, 130.0), "ايبو"), ((560.0, 100.0, 1000.0, 130.0), "فد")]
+        provider, _, recogniser = provider_with([], [("فد", 0.9), ("ايبو", 0.9)], detector=RaisingDetector())
+        result, detected = script.evaluate_page(provider, page_png(), gold, gold_boxes=True, gold_order=[1, 0])
+        self.assertEqual([d.xyxy for d in detected], [gold[1][0], gold[0][0]])  # right box sent first
+        self.assertEqual((result["page"]["cer"], result["line"]["cer"]), (0.0, 0.0))
+        self.assertEqual(result["order"]["kendall_tau"], 1.0)
 
     def test_reading_order_file_is_optional_and_validated(self):
         script = load_eval_script()

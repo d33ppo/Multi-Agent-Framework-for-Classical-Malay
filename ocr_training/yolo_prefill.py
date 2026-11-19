@@ -385,6 +385,62 @@ def _xy_cut(boxes, min_gap_x, min_gap_y, depth=0):
     return _rows_right_to_left(boxes)
 
 
+PAGE_NUMBER_MAX_WIDTH = 2.0   # a page number is at most this many median line heights wide
+PAGE_NUMBER_TOLERANCE = 0.25  # it may overlap the box above it by this fraction of a median line height
+HEADLINE_HEIGHT_RATIO = 1.8   # a headline is at least this many median line heights tall ...
+TOP_BAND_FRAC = 1 / 3         # ... or spans the gutter, and starts in this top fraction of the text area
+
+
+def _median_height(boxes):
+    return float(np.median([b[3] - b[1] for b in boxes]))
+
+
+def _page_number(boxes):
+    """
+    Index of a page number: the lowest box, short (at most PAGE_NUMBER_MAX_WIDTH median
+    line heights wide) and below every other box. None when there is no such box.
+    """
+    if len(boxes) < 2:
+        return None
+    line_h = _median_height(boxes)
+    k = max(range(len(boxes)), key=lambda i: boxes[i][1])
+    b = boxes[k]
+    lowest_other = max(o[3] for i, o in enumerate(boxes) if i != k)
+    if b[2] - b[0] <= PAGE_NUMBER_MAX_WIDTH * line_h and b[1] >= lowest_other - PAGE_NUMBER_TOLERANCE * line_h:
+        return k
+    return None
+
+
+def _headlines(boxes, min_gap_x):
+    """
+    Indices of headline boxes: a box that starts in the top TOP_BAND_FRAC of the text area
+    and is at least HEADLINE_HEIGHT_RATIO median line heights tall or spans the page's
+    column gutter, with no other (non-headline) box above it that overlaps it horizontally.
+    """
+    if len(boxes) < 3:
+        return set()
+    line_h = _median_height(boxes)
+    top, bottom = min(b[1] for b in boxes), max(b[3] for b in boxes)
+    band_end = top + TOP_BAND_FRAC * (bottom - top)
+    col = _column_cut(boxes, min_gap_x)
+    x_min, x_max = min(b[0] for b in boxes), max(b[2] for b in boxes)
+    candidates = {i for i, b in enumerate(boxes)
+                  if b[1] <= band_end and (b[3] - b[1] >= HEADLINE_HEIGHT_RATIO * line_h
+                                           or (col is not None and _spans_gutter(b, col[3], x_min, x_max)))}
+    # A candidate with ordinary text above it is not before the columns (a mid-page heading).
+    changed = True
+    while changed:
+        changed = False
+        for i in sorted(candidates):
+            b = boxes[i]
+            for j, o in enumerate(boxes):
+                if j not in candidates and o[3] <= b[1] + 0.5 * line_h and _overlap_frac(o, b) > 0:
+                    candidates.discard(i)
+                    changed = True
+                    break
+    return candidates
+
+
 def reading_order(boxes, page_width, min_gap_frac=0.008):
     """
     Jawi reading order via recursive XY-cut: wherever an empty vertical gap runs
@@ -392,10 +448,23 @@ def reading_order(boxes, page_width, min_gap_frac=0.008):
     split at horizontal gaps into bands read top to bottom. Pieces of the same
     printed line are read right to left. Headlines spanning columns block a
     vertical cut, so they come out in their own band first.
+
+    Two page-level rules wrap the XY-cut:
+    - a page number (a short box below all other boxes) is always read last;
+    - headlines (tall or gutter-spanning boxes at the top, see _headlines) are read
+      before everything else, top to bottom.
     """
     if not boxes:
         return []
-    return _xy_cut(list(boxes), min_gap_frac * page_width, 1.0)
+    boxes = list(boxes)
+    min_gap_x = min_gap_frac * page_width
+    k = _page_number(boxes)
+    tail = [boxes.pop(k)] if k is not None else []
+    heads = _headlines(boxes, min_gap_x)
+    head = [b for i, b in enumerate(boxes) if i in heads]
+    rest = [b for i, b in enumerate(boxes) if i not in heads]
+    body = _xy_cut(rest, min_gap_x, 1.0) if rest else []
+    return (_rows_right_to_left(head) if head else []) + body + tail
 
 
 # ---------------------------------------------------------------------------
